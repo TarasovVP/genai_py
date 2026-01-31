@@ -4,6 +4,9 @@ import pandas as pd
 from ddl_parser import parse_ddl_to_schema
 import json
 
+from vertex_client import VertexGenAIClient
+from data_generator import generate_all_tables
+
 # ----------------------------
 # Page setup
 # ----------------------------
@@ -114,8 +117,26 @@ if page == "Data Generation":
             with st.expander("DDL preview"):
                 st.code(st.session_state.ddl_text, language="sql")
 
-            # For now, keep demo tables as “generated”
-            st.info("Demo data is shown below. Later, this will be real generated data.")
+            try:
+                vertex = VertexGenAIClient(
+                    project="gd-gcp-gridu-genai",
+                    location="europe-west1",
+                    model="gemini-2.0-flash-001",
+                )
+
+                dfs = generate_all_tables(
+                    vertex=vertex,
+                    ddl_schema=schema,
+                    rows_per_table=int(rows_per_table),
+                    temperature=float(temperature),
+                    max_output_tokens=int(max_tokens),
+                )
+
+                st.session_state.tables = dfs
+                st.success("Generated real data via Vertex AI.")
+            except Exception as e:
+                st.error(f"Generation failed: {e}")
+                st.stop()
 
     st.markdown("###")
     st.subheader("Data Preview")
