@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 
+from ddl_parser import parse_ddl_to_schema
+import json
+
 # ----------------------------
 # Page setup
 # ----------------------------
@@ -93,7 +96,20 @@ if page == "Data Generation":
         if ddl_file is None:
             st.error("Please upload a DDL schema file first.")
         else:
-            st.session_state.ddl_text = ddl_file.read().decode("utf-8", errors="ignore")
+            ddl_text = ddl_file.read().decode("utf-8", errors="ignore")
+            st.session_state.ddl_text = ddl_text
+
+            # --- NEW: parse DDL -> schema JSON ---
+            try:
+                schema = parse_ddl_to_schema(ddl_text)
+                st.session_state.schema = schema
+
+                st.success("DDL parsed → schema JSON is ready.")
+                with st.expander("Show parsed schema (JSON)"):
+                    st.code(json.dumps(schema, ensure_ascii=False, indent=2), language="json")
+            except Exception as e:
+                st.error(f"Failed to parse DDL: {e}")
+                st.stop()
             st.success("DDL schema uploaded. Next step: connect Gemini-based generation.")
             with st.expander("DDL preview"):
                 st.code(st.session_state.ddl_text, language="sql")
