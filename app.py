@@ -8,6 +8,11 @@ import time
 from ddl_parser import parse_ddl_to_schema
 from vertex_client import VertexGenAIClient
 from data_generator import generate_all_tables
+from data_editor import (
+    build_table_patch_schema,
+    build_prompt_for_table_patch,
+    apply_patch_to_df,
+)
 
 # ----------------------------
 # Page setup
@@ -15,7 +20,7 @@ from data_generator import generate_all_tables
 st.set_page_config(page_title="Data Assistant", layout="wide")
 
 # ----------------------------
-# Session state (demo storage)
+# Session state
 # ----------------------------
 if "tables" not in st.session_state:
     st.session_state.tables = {}  # dict[str, pd.DataFrame]
@@ -32,6 +37,7 @@ if "last_error" not in st.session_state:
 if "dataset_prompt" not in st.session_state:
     st.session_state.dataset_prompt = ""
 
+
 # ----------------------------
 # Sidebar
 # ----------------------------
@@ -46,7 +52,6 @@ page = st.sidebar.radio(
 # Helpers
 # ----------------------------
 def seed_demo_tables():
-    # Demo tables to show the "Data Preview" UI even before real generation is connected
     st.session_state.tables = {
         "users": pd.DataFrame(
             {
@@ -66,7 +71,6 @@ def seed_demo_tables():
     }
 
 
-# показываем демо-таблицы только пока нет реальных
 if not st.session_state.tables:
     seed_demo_tables()
 
@@ -90,18 +94,67 @@ def _format_elapsed(seconds: float) -> str:
     return f"{mm:02d}:{ss:02d}"
 
 
+def _get_schema_tables() -> dict:
+    return (st.session_state.schema or {}).get("tables", {}) or {}
+
+
+def _get_table_meta(table_name: str) -> dict:
+    return _get_schema_tables().get(table_name, {}) or {}
+
+
+def _compute_fk_allowed_values_for_table(table_name: str) -> dict[str, list]:
+    """
+    Для таблицы table_name находим все FK (child_col -> parent_table.parent_col)
+    и строим allowed значения на основании уже имеющихся parent DataFrame в session_state.tables.
+    """
+    schema_tables = _get_schema_tables()
+    meta = schema_tables.get(table_name, {}) or {}
+    fks = meta.get("foreign_keys") or []
+
+    allowed: dict[str, list] = {}
+
+    for fk in fks:
+        child_cols = fk.get("columns") or []
+        parent = fk.get("ref_table")
+        ref_cols = fk.get("ref_columns") or []
+
+        if not child_cols or not parent:
+            continue
+
+        child_fk_col = child_cols[0]
+
+        if parent not in st.session_state.tables:
+            continue
+
+        df_parent = st.session_state.tables[parent]
+
+        if ref_cols:
+            parent_ref_col = ref_cols[0]
+        else:
+            parent_pk = (schema_tables.get(parent, {}) or {}).get("primary_key") or []
+            parent_ref_col = parent_pk[0] if parent_pk else None
+
+        if not parent_ref_col or parent_ref_col not in df_parent.columns:
+            continue
+
+        vals = df_parent[parent_ref_col].dropna().tolist()
+        allowed[child_fk_col] = vals
+
+    return allowed
+
+
 # ----------------------------
 # Page: Data Generation
 # ----------------------------
 if page == "Data Generation":
     st.markdown("###")
 
-    dataset_prompt_input = st.text_input(
+    # глобальная инструкция для датасета (используется при генерации)
+    dataset_prompt = st.text_input(
         "Prompt",
-        value=st.session_state.dataset_prompt,
-        placeholder="Global instructions for the dataset (optional). E.g.: 'Make it e-commerce, last 30 days, more EU cities...'",
+        placeholder="Optional: global instructions for the whole dataset (e.g., 'E-commerce dataset for Germany, realistic names, EUR prices')",
+        key="dataset_prompt",
     )
-    st.session_state.dataset_prompt = dataset_prompt_input
 
     col_upload, col_formats = st.columns([1.2, 2.8], vertical_alignment="center")
     with col_upload:
@@ -139,7 +192,6 @@ if page == "Data Generation":
     if generate_clicked:
         st.session_state.last_error = None
 
-        # placeholders (важно: доступны и в try, и в except)
         progress = None
         status_ctx = None
 
@@ -187,11 +239,9 @@ if page == "Data Generation":
                     status_line.info("Подготовка…")
 
                     def on_progress(done: int, total: int, table_label: str):
-                        # показываем 1-based счётчик таблиц (1/7, 2/7 ...)
                         shown_total = max(1, int(total))
                         shown_done = min(int(done) + 1, shown_total)
 
-                        # прогресс-бар по done (0-based)
                         if total == 0:
                             pct = 0
                         else:
@@ -202,7 +252,6 @@ if page == "Data Generation":
                         elapsed = _format_elapsed(time.time() - started_at)
                         status_line.info(f"Генерация: {shown_done}/{shown_total} — {table_label} | ⏱ {elapsed}")
 
-                    # ВАЖНО: теперь передаём dataset_prompt
                     if _supports_on_progress(generate_all_tables):
                         dfs = generate_all_tables(
                             vertex=vertex,
@@ -210,7 +259,7 @@ if page == "Data Generation":
                             rows_per_table=int(rows_per_table),
                             temperature=float(temperature),
                             max_output_tokens=int(max_tokens),
-                            dataset_prompt=st.session_state.dataset_prompt,
+                            dataset_prompt=str(dataset_prompt or ""),
                             on_progress=on_progress,
                         )
                     else:
@@ -222,7 +271,7 @@ if page == "Data Generation":
                             rows_per_table=int(rows_per_table),
                             temperature=float(temperature),
                             max_output_tokens=int(max_tokens),
-                            dataset_prompt=st.session_state.dataset_prompt,
+                            dataset_prompt=str(dataset_prompt or ""),
                         )
 
                     status_ctx.update(label="Генерация завершена ✅", state="complete", expanded=False)
@@ -234,7 +283,6 @@ if page == "Data Generation":
 
             except Exception as e:
                 st.session_state.last_error = f"{e}"
-
                 st.error(f"Generation failed: {st.session_state.last_error}")
 
                 if status_ctx is not None:
@@ -258,26 +306,120 @@ if page == "Data Generation":
         st.write("")
 
     df = st.session_state.tables.get(selected_table)
-    if df is not None:
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
+    if df is None:
         st.info("No data yet. Click Generate after uploading a schema.")
+        st.stop()
 
-    edit_col, btn_col = st.columns([6, 1], vertical_alignment="center")
-    with edit_col:
-        edit_prompt = st.text_input(
-            "",
-            placeholder="Enter quick edit instructions...",
-            label_visibility="collapsed",
-        )
-    with btn_col:
-        submit_clicked = st.button("Submit")
+    # Плейсхолдер для "живого" обновления таблицы
+    df_placeholder = st.empty()
+    df_placeholder.dataframe(df, use_container_width=True, hide_index=True)
 
-    if submit_clicked:
+    st.markdown("---")
+    st.subheader("Edit selected table (LLM patch)")
+
+    # Оставляем только prompt
+    edit_prompt = st.text_input(
+        "Edit instructions",
+        placeholder="e.g., 'Set status=active for all inactive users, delete rows with invalid emails, add 5 new VIP users'",
+        key=f"edit_prompt__{selected_table}",
+    )
+
+    col_b1, col_b2 = st.columns([1, 5], vertical_alignment="center")
+    with col_b1:
+        apply_edit_clicked = st.button("Apply edit", type="primary", key=f"apply_edit__{selected_table}")
+    with col_b2:
+        st.caption("Edits are applied via patch-operations (update/delete/add).")
+
+    if apply_edit_clicked:
         if not edit_prompt.strip():
             st.warning("Please enter edit instructions first.")
         else:
-            st.success("Edit request received. Next step: apply edits via Gemini and update the table.")
+            if st.session_state.schema is None:
+                st.error("Schema is not loaded. Upload and parse DDL first.")
+            else:
+                vertex = None
+                try:
+                    # Vertex settings: берём из UI (expander "More parameters")
+                    vertex = VertexGenAIClient(
+                        project=project.strip(),
+                        location=location.strip(),
+                        model=model.strip(),
+                    )
+
+                    table_meta = _get_table_meta(selected_table)
+                    if not table_meta:
+                        st.error(f"Table '{selected_table}' not found in schema.")
+                        st.stop()
+
+                    # фиксируем параметры "по умолчанию", раз UI убрали
+                    DEFAULT_SAMPLE_ROWS = 20
+                    DEFAULT_MAX_OPS = 20
+
+                    sample_rows = df.head(min(DEFAULT_SAMPLE_ROWS, len(df))).to_dict(orient="records")
+                    fk_allowed = _compute_fk_allowed_values_for_table(selected_table)
+
+                    patch_schema = build_table_patch_schema(table_meta)
+                    patch_prompt = build_prompt_for_table_patch(
+                        table_name=selected_table,
+                        table_meta=table_meta,
+                        user_instruction=edit_prompt,
+                        sample_rows=sample_rows,
+                        fk_allowed_values=fk_allowed,
+                        max_ops=DEFAULT_MAX_OPS,
+                    )
+
+                    started_at = time.time()
+                    with st.status("Applying edit via Gemini…", expanded=True) as sctx:
+                        line = sctx.empty()
+                        line.info("Requesting patch…")
+
+                        patch = vertex.generate_json(
+                            prompt=patch_prompt,
+                            response_schema=patch_schema,
+                            temperature=0.2,
+                            max_output_tokens=2048,
+                            repair_attempts=1,
+                            token_expand_attempts=2,
+                            max_output_tokens_cap=8192,
+                        )
+
+                        line.info("Applying patch to dataframe…")
+                        new_df, warnings = apply_patch_to_df(
+                            df=df,
+                            patch=patch,
+                            table_meta=table_meta,
+                            fk_allowed_values=fk_allowed,
+                        )
+
+                        # сохраняем и сразу "вживую" обновляем таблицу
+                        st.session_state.tables[selected_table] = new_df
+                        df = new_df
+                        df_placeholder.dataframe(df, use_container_width=True, hide_index=True)
+
+                        sctx.update(label="Edit applied ✅", state="complete", expanded=False)
+
+                    st.success(f"Edit applied to '{selected_table}'.")
+                    st.caption(f"Time: {_format_elapsed(time.time() - started_at)}")
+
+                    # Patch JSON НЕ показываем (по твоему требованию)
+
+                    if warnings:
+                        with st.expander(f"Warnings ({len(warnings)})"):
+                            for w in warnings[:200]:
+                                st.warning(w)
+
+                except Exception as e:
+                    st.session_state.last_error = f"{e}"
+                    st.error(f"Edit failed: {st.session_state.last_error}")
+
+                    if vertex is not None:
+                        raw = getattr(vertex, "last_raw", None)
+                        fr = getattr(vertex, "last_finish_reason", None)
+                        if raw:
+                            with st.expander("Vertex raw head"):
+                                st.code(str(raw)[:2000])
+                        if fr:
+                            st.caption(f"Finish reason: {fr}")
 
 # ----------------------------
 # Page: Talk to your data
