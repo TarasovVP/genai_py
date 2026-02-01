@@ -29,6 +29,9 @@ if "schema" not in st.session_state:
 if "last_error" not in st.session_state:
     st.session_state.last_error = None
 
+if "dataset_prompt" not in st.session_state:
+    st.session_state.dataset_prompt = ""
+
 # ----------------------------
 # Sidebar
 # ----------------------------
@@ -63,6 +66,7 @@ def seed_demo_tables():
     }
 
 
+# показываем демо-таблицы только пока нет реальных
 if not st.session_state.tables:
     seed_demo_tables()
 
@@ -92,7 +96,12 @@ def _format_elapsed(seconds: float) -> str:
 if page == "Data Generation":
     st.markdown("###")
 
-    prompt = st.text_input("Prompt", placeholder="Enter your prompt here...")
+    dataset_prompt_input = st.text_input(
+        "Prompt",
+        value=st.session_state.dataset_prompt,
+        placeholder="Global instructions for the dataset (optional). E.g.: 'Make it e-commerce, last 30 days, more EU cities...'",
+    )
+    st.session_state.dataset_prompt = dataset_prompt_input
 
     col_upload, col_formats = st.columns([1.2, 2.8], vertical_alignment="center")
     with col_upload:
@@ -170,22 +179,19 @@ if page == "Data Generation":
                 tables_dict = (schema or {}).get("tables", {}) or {}
                 total_tables = len(tables_dict)
 
-                # UI widgets
                 progress = st.progress(0)
-
                 started_at = time.time()
 
                 with st.status("Генерация данных в Vertex AI…", expanded=True) as status_ctx:
-                    # одна “живая” строка внутри status
                     status_line = status_ctx.empty()
                     status_line.info("Подготовка…")
 
                     def on_progress(done: int, total: int, table_label: str):
-                        # FIX 2: показываем 1-based счётчик таблиц (1/7, 2/7 ...)
+                        # показываем 1-based счётчик таблиц (1/7, 2/7 ...)
                         shown_total = max(1, int(total))
                         shown_done = min(int(done) + 1, shown_total)
 
-                        # прогресс-бар оставляем по done (0-based), чтобы 100% было только в конце
+                        # прогресс-бар по done (0-based)
                         if total == 0:
                             pct = 0
                         else:
@@ -196,6 +202,7 @@ if page == "Data Generation":
                         elapsed = _format_elapsed(time.time() - started_at)
                         status_line.info(f"Генерация: {shown_done}/{shown_total} — {table_label} | ⏱ {elapsed}")
 
+                    # ВАЖНО: теперь передаём dataset_prompt
                     if _supports_on_progress(generate_all_tables):
                         dfs = generate_all_tables(
                             vertex=vertex,
@@ -203,10 +210,10 @@ if page == "Data Generation":
                             rows_per_table=int(rows_per_table),
                             temperature=float(temperature),
                             max_output_tokens=int(max_tokens),
+                            dataset_prompt=st.session_state.dataset_prompt,
                             on_progress=on_progress,
                         )
                     else:
-                        # fallback: без колбеков показываем только время
                         elapsed = _format_elapsed(time.time() - started_at)
                         status_line.info(f"Генерация выполняется… | ⏱ {elapsed}")
                         dfs = generate_all_tables(
@@ -215,6 +222,7 @@ if page == "Data Generation":
                             rows_per_table=int(rows_per_table),
                             temperature=float(temperature),
                             max_output_tokens=int(max_tokens),
+                            dataset_prompt=st.session_state.dataset_prompt,
                         )
 
                     status_ctx.update(label="Генерация завершена ✅", state="complete", expanded=False)
@@ -227,14 +235,11 @@ if page == "Data Generation":
             except Exception as e:
                 st.session_state.last_error = f"{e}"
 
-                # 1) главный блок ошибки (с деталями)
                 st.error(f"Generation failed: {st.session_state.last_error}")
 
-                # 2) статус в UI: один источник правды
                 if status_ctx is not None:
                     status_ctx.update(label="Генерация остановлена из-за ошибки ❌", state="error", expanded=True)
 
-                # 3) показать проблемы парсинга DDL (если есть)
                 if st.session_state.schema and st.session_state.schema.get("errors"):
                     with st.expander("DDL parser issues (schema['errors'])"):
                         st.code(
