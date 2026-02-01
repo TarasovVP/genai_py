@@ -65,6 +65,7 @@ def build_prompt_for_table(
     table_meta: Dict[str, Any],
     rows_count: int,
     fk_allowed_values: Dict[str, List[Any]],
+    dataset_prompt: str = "",
 ) -> str:
     cols_lines = []
     for col_name, col_info in table_meta["columns"].items():
@@ -89,6 +90,17 @@ def build_prompt_for_table(
 
     allowed_section = allowed_text if allowed_text else "\n- none"
 
+    dataset_prompt = (dataset_prompt or "").strip()
+    dataset_section = ""
+    if dataset_prompt:
+        dataset_section = (
+            "\n\nGlobal dataset instructions (apply across ALL tables):\n"
+            f"{dataset_prompt}\n"
+            "Rules for applying these instructions:\n"
+            "- Follow them as long as they do NOT violate the schema constraints (types, NOT NULL, PK/FK).\n"
+            "- If an instruction conflicts with schema constraints, prefer the schema.\n"
+        )
+
     return f"""
 You generate synthetic data for ONE SQL table.
 
@@ -109,7 +121,7 @@ Rules:
 - Use realistic values.
 - Respect NOT NULL.
 - If there is a primary key, ensure it is unique.
-- For foreign keys use only allowed values:{allowed_section}
+- For foreign keys use only allowed values:{allowed_section}{dataset_section}
 
 Output format:
 {{ "table": "{table_name}", "rows": [ ... ] }}
@@ -241,9 +253,7 @@ def _min_tokens_for_batch(table_meta: Dict[str, Any], batch_rows: int) -> int:
     Чем больше колонок/строк — тем больше токенов.
     """
     cols = _estimate_cols_count(table_meta)
-    # базовый бюджет: 10 строк * 10 колонок ~ 800-1200 токенов в JSON
-    # берём чуть с запасом
-    est = int(batch_rows * cols * 8)  # очень грубо, но работает как страховка
+    est = int(batch_rows * cols * 8)  # грубо, но как страховка ок
     return max(800, min(est, 8192))
 
 
@@ -255,7 +265,6 @@ def _progress_table_label(
     cur_batch: int,
     batch_size: int,
 ) -> str:
-    # пример: "Delivery_Drivers (120/1000 rows, batch 12, +50, bs=50)"
     return f"{table_name} ({collected}/{expected_total} rows, batch {request_count}, +{cur_batch}, bs={batch_size})"
 
 
@@ -266,6 +275,7 @@ def generate_all_tables(
     rows_per_table: int,
     temperature: float,
     max_output_tokens: int,
+    dataset_prompt: str = "",
     on_progress: Optional[Callable[[int, int, str], None]] = None,
 ) -> Dict[str, pd.DataFrame]:
     tables = ddl_schema["tables"]
@@ -312,17 +322,10 @@ def generate_all_tables(
         # --------- batching ---------
         all_rows: List[Dict[str, Any]] = []
 
-        # =========================
         # FIX 1: batch_size 50+
-        # =========================
-        # batch_size не должен "прилипать" к UI max_output_tokens (например 100),
-        # иначе эвристика часто даёт 10-20.
-        # Для выбора batch_size используем эффективный бюджет (min 2048).
         effective_tokens_for_batching = min(max(int(max_output_tokens), 2048), 8192)
         batch_size = _choose_batch_size_smart(expected_total, effective_tokens_for_batching, meta)
 
-        # Стартуем минимум с 50 строк, если таблица достаточно большая.
-        # Если модель не вытянет — ниже сработает consecutive_underfilled и batch уменьшится.
         if expected_total >= 50:
             batch_size = max(batch_size, 50)
 
@@ -359,7 +362,13 @@ def generate_all_tables(
             )
 
             response_schema = build_table_response_schema(table_name, meta)
-            prompt = build_prompt_for_table(table_name, meta, cur_batch, fk_allowed_values)
+            prompt = build_prompt_for_table(
+                table_name=table_name,
+                table_meta=meta,
+                rows_count=cur_batch,
+                fk_allowed_values=fk_allowed_values,
+                dataset_prompt=dataset_prompt,
+            )
             prompt += (
                 "\n\nIMPORTANT:\n"
                 f"- This is a batch request. You MUST return exactly {cur_batch} rows in this response.\n"
@@ -368,7 +377,7 @@ def generate_all_tables(
                 "- Ensure rows are diverse and not duplicates.\n"
             )
 
-            # --- ключевое: токены должны соответствовать батчу ---
+            # токены должны соответствовать батчу
             req_tokens_min = _min_tokens_for_batch(meta, cur_batch)
             req_tokens = max(int(max_output_tokens), req_tokens_min)
             req_tokens = min(req_tokens, 8192)
@@ -422,8 +431,7 @@ def generate_all_tables(
                 )
             last_len = len(all_rows)
 
-            # --- адаптация батча, если модель стабильно не вытягивает ---
-            # 2 раза подряд недодали -> уменьшаем batch_size в 2 раза (не меньше 10)
+            # адаптация батча
             if consecutive_underfilled >= 2 and batch_size > 10:
                 batch_size = max(10, batch_size // 2)
                 consecutive_underfilled = 0
