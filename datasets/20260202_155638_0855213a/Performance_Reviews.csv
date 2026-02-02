@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,Excellent performance this quarter.,Continue improving communication skills.,Completed
+2,2,3,2023-02-20,3,Meets expectations. Needs improvement in project management.,Complete project management training.,Completed
+3,3,4,2023-03-10,5,Outstanding performance. Exceeds expectations.,Mentor junior team members.,Completed
+4,4,5,2023-04-05,2,Needs significant improvement in several areas.,Develop a performance improvement plan.,In Progress
+5,5,6,2023-05-12,4,Good performance overall.,Enhance technical skills.,Completed
+6,6,7,2023-06-18,3,Meets expectations.,Improve time management.,Completed
+7,7,8,2023-07-22,5,Exceptional performance and leadership.,Lead a new initiative.,Completed
+8,8,9,2023-08-01,2,Performance is below expectations.,Attend training and seek mentorship.,In Progress
+9,9,10,2023-09-25,4,Consistently performs well.,Take on more responsibility.,Completed
+10,10,1,2023-10-30,3,Meets expectations. Needs to be more proactive.,Increase proactivity in problem-solving.,Completed
