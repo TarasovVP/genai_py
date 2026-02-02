@@ -5,6 +5,13 @@ import random
 import inspect
 import time
 
+import os
+from pathlib import Path
+from datetime import datetime
+from uuid import uuid4
+from io import BytesIO
+import zipfile
+
 from ddl_parser import parse_ddl_to_schema
 from vertex_client import VertexGenAIClient
 from data_generator import generate_all_tables
@@ -13,6 +20,22 @@ from data_editor import (
     build_prompt_for_table_patch,
     apply_patch_to_df,
 )
+
+# ----------------------------
+# Defaults (moved from "More parameters")
+# ----------------------------
+DEFAULT_ROWS_PER_TABLE = 10
+DEFAULT_SEED = 0
+
+DEFAULT_VERTEX_PROJECT = "gd-gcp-gridu-genai"
+DEFAULT_VERTEX_LOCATION = "europe-west1"
+DEFAULT_VERTEX_MODEL = "gemini-2.0-flash-001"
+
+# ----------------------------
+# Persistence
+# ----------------------------
+DATASETS_ROOT = Path("datasets")
+DATASETS_ROOT.mkdir(parents=True, exist_ok=True)
 
 # ----------------------------
 # Page setup
@@ -37,6 +60,14 @@ if "last_error" not in st.session_state:
 if "dataset_prompt" not in st.session_state:
     st.session_state.dataset_prompt = ""
 
+# NEW: datasets registry + current dataset pointer
+if "datasets" not in st.session_state:
+    # dataset_id -> meta
+    # meta: { "created_at_utc": str, "path": str, "tables": [..] }
+    st.session_state.datasets = {}
+
+if "current_dataset_id" not in st.session_state:
+    st.session_state.current_dataset_id = None
 
 # ----------------------------
 # Sidebar
@@ -144,6 +175,71 @@ def _compute_fk_allowed_values_for_table(table_name: str) -> dict[str, list]:
 
 
 # ----------------------------
+# Persistence helpers
+# ----------------------------
+def _new_dataset_id() -> str:
+    return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
+
+
+def _dataset_dir(dataset_id: str) -> Path:
+    d = DATASETS_ROOT / dataset_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _save_text(path: Path, text: str):
+    path.write_text(text or "", encoding="utf-8")
+
+
+def _save_json(path: Path, obj: dict):
+    path.write_text(json.dumps(obj or {}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _save_table_csv(dataset_id: str, table_name: str, df: pd.DataFrame):
+    d = _dataset_dir(dataset_id)
+    csv_path = d / f"{table_name}.csv"
+    df.to_csv(csv_path, index=False, encoding="utf-8")
+
+
+def _save_dataset_to_disk(
+    dataset_id: str,
+    ddl_text: str,
+    schema: dict,
+    tables: dict[str, pd.DataFrame],
+    dataset_prompt: str,
+):
+    d = _dataset_dir(dataset_id)
+
+    _save_text(d / "ddl.sql", ddl_text or "")
+    _save_json(d / "schema.json", schema or {})
+    _save_json(
+        d / "meta.json",
+        {
+            "dataset_id": dataset_id,
+            "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "tables": list((tables or {}).keys()),
+            "dataset_prompt": dataset_prompt or "",
+        },
+    )
+
+    for tname, tdf in (tables or {}).items():
+        _save_table_csv(dataset_id, tname, tdf)
+
+
+def _df_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8")
+
+
+def _tables_to_zip_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
+    bio = BytesIO()
+    with zipfile.ZipFile(bio, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name, df in (tables or {}).items():
+            zf.writestr(f"{name}.csv", df.to_csv(index=False))
+    bio.seek(0)
+    return bio.read()
+
+
+# ----------------------------
 # Page: Data Generation
 # ----------------------------
 if page == "Data Generation":
@@ -174,17 +270,6 @@ if page == "Data Generation":
         temperature = st.slider("Temperature", min_value=0.0, max_value=2.0, value=1.0, step=0.1)
     with col_right:
         max_tokens = st.number_input("Max Tokens", min_value=1, value=100, step=10)
-
-    with st.expander("More parameters (optional)"):
-        rows_per_table = st.number_input("Rows per table", min_value=1, value=1000, step=100)
-        seed = st.number_input("Seed", min_value=0, value=0, step=1)
-
-        st.markdown("**Vertex settings**")
-        project = st.text_input("Project", value="gd-gcp-gridu-genai")
-        location = st.text_input("Location", value="europe-west1")
-        model = st.text_input("Model", value="gemini-2.0-flash-001")
-
-        st.caption("These will be used for real data generation.")
 
     st.markdown("###")
     generate_clicked = st.button("Generate", type="primary")
@@ -219,17 +304,17 @@ if page == "Data Generation":
 
             # 2) Generate data via Vertex with progress UI
             try:
-                if int(seed) != 0:
-                    random.seed(int(seed))
+                seed = int(DEFAULT_SEED)
+                rows_per_table = int(DEFAULT_ROWS_PER_TABLE)
+
+                if seed != 0:
+                    random.seed(seed)
 
                 vertex = VertexGenAIClient(
-                    project=project.strip(),
-                    location=location.strip(),
-                    model=model.strip(),
+                    project=DEFAULT_VERTEX_PROJECT,
+                    location=DEFAULT_VERTEX_LOCATION,
+                    model=DEFAULT_VERTEX_MODEL,
                 )
-
-                tables_dict = (schema or {}).get("tables", {}) or {}
-                total_tables = len(tables_dict)
 
                 progress = st.progress(0)
                 started_at = time.time()
@@ -256,7 +341,7 @@ if page == "Data Generation":
                         dfs = generate_all_tables(
                             vertex=vertex,
                             ddl_schema=schema,
-                            rows_per_table=int(rows_per_table),
+                            rows_per_table=rows_per_table,
                             temperature=float(temperature),
                             max_output_tokens=int(max_tokens),
                             dataset_prompt=str(dataset_prompt or ""),
@@ -268,7 +353,7 @@ if page == "Data Generation":
                         dfs = generate_all_tables(
                             vertex=vertex,
                             ddl_schema=schema,
-                            rows_per_table=int(rows_per_table),
+                            rows_per_table=rows_per_table,
                             temperature=float(temperature),
                             max_output_tokens=int(max_tokens),
                             dataset_prompt=str(dataset_prompt or ""),
@@ -280,6 +365,26 @@ if page == "Data Generation":
                 st.success("Готово. Таблицы сгенерированы.")
 
                 st.session_state.tables = dfs
+
+                # 3) Persist dataset to disk (CSV/JSON/DDL)
+                dataset_id = _new_dataset_id()
+                st.session_state.current_dataset_id = dataset_id
+
+                _save_dataset_to_disk(
+                    dataset_id=dataset_id,
+                    ddl_text=st.session_state.ddl_text,
+                    schema=st.session_state.schema,
+                    tables=st.session_state.tables,
+                    dataset_prompt=str(dataset_prompt or ""),
+                )
+
+                st.session_state.datasets[dataset_id] = {
+                    "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    "path": str(_dataset_dir(dataset_id)),
+                    "tables": list(st.session_state.tables.keys()),
+                }
+
+                st.caption(f"Saved dataset: {dataset_id}")
 
             except Exception as e:
                 st.session_state.last_error = f"{e}"
@@ -310,6 +415,35 @@ if page == "Data Generation":
         st.info("No data yet. Click Generate after uploading a schema.")
         st.stop()
 
+    # Export buttons
+    st.markdown("###")
+    export_left, export_right, export_info = st.columns([1.2, 1.2, 3.6], vertical_alignment="center")
+
+    with export_left:
+        st.download_button(
+            label="Download CSV (selected table)",
+            data=_df_to_csv_bytes(df),
+            file_name=f"{selected_table}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    with export_right:
+        st.download_button(
+            label="Download ZIP (all tables)",
+            data=_tables_to_zip_bytes(st.session_state.tables),
+            file_name="dataset_tables.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
+
+    with export_info:
+        cur = st.session_state.current_dataset_id
+        if cur:
+            st.caption(f"Current dataset_id: {cur} (saved on disk)")
+        else:
+            st.caption("Current dataset_id: not saved yet (generate to create one)")
+
     # Плейсхолдер для "живого" обновления таблицы
     df_placeholder = st.empty()
     df_placeholder.dataframe(df, use_container_width=True, hide_index=True)
@@ -339,11 +473,10 @@ if page == "Data Generation":
             else:
                 vertex = None
                 try:
-                    # Vertex settings: берём из UI (expander "More parameters")
                     vertex = VertexGenAIClient(
-                        project=project.strip(),
-                        location=location.strip(),
-                        model=model.strip(),
+                        project=DEFAULT_VERTEX_PROJECT,
+                        location=DEFAULT_VERTEX_LOCATION,
+                        model=DEFAULT_VERTEX_MODEL,
                     )
 
                     table_meta = _get_table_meta(selected_table)
@@ -351,7 +484,6 @@ if page == "Data Generation":
                         st.error(f"Table '{selected_table}' not found in schema.")
                         st.stop()
 
-                    # фиксируем параметры "по умолчанию", раз UI убрали
                     DEFAULT_SAMPLE_ROWS = 20
                     DEFAULT_MAX_OPS = 20
 
@@ -393,6 +525,12 @@ if page == "Data Generation":
 
                         # сохраняем и сразу "вживую" обновляем таблицу
                         st.session_state.tables[selected_table] = new_df
+
+                        # Persist table update if dataset exists
+                        cur_id = st.session_state.current_dataset_id
+                        if cur_id:
+                            _save_table_csv(cur_id, selected_table, new_df)
+
                         df = new_df
                         df_placeholder.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -427,8 +565,28 @@ if page == "Data Generation":
 else:
     st.subheader("Talk to your data")
 
-    dataset = st.selectbox("Dataset", options=["(demo) current session tables"], index=0)
+    saved_ids = list(st.session_state.datasets.keys())
+    options = ["(current session)"] + saved_ids
+    dataset = st.selectbox("Dataset", options=options, index=0)
 
+    if dataset == "(current session)":
+        tables_for_view = st.session_state.tables
+        st.caption("Using tables from current session_state.")
+    else:
+        meta = st.session_state.datasets.get(dataset, {})
+        st.caption(f"Dataset path: {meta.get('path')}")
+        st.caption(f"Tables: {', '.join(meta.get('tables', []))}")
+        # Пока показываем текущие таблицы, но выбор датасета уже есть.
+        tables_for_view = st.session_state.tables
+
+    st.markdown("### Tables preview")
+    if not tables_for_view:
+        st.info("No tables available yet.")
+    else:
+        tname = st.selectbox("Table", options=list(tables_for_view.keys()))
+        st.dataframe(tables_for_view[tname], use_container_width=True, hide_index=True)
+
+    st.markdown("###")
     question = st.text_area(
         "Question",
         placeholder="Ask a question in natural language (e.g., 'Show top 10 users by total order amount')...",
