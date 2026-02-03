@@ -1,12 +1,9 @@
-# data_editor.py
 from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple, Optional
 import random
 import pandas as pd
 
-
-# --------- type mapping ---------
 def _map_sql_type_to_json(sql_type: str) -> str:
     t = (sql_type or "").strip().lower()
     base = t.split("(")[0].strip()
@@ -39,7 +36,6 @@ def _table_columns_props(table_meta: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
     return props, required
 
 
-# --------- patch schema / prompt ---------
 def build_table_patch_schema(table_meta: Dict[str, Any]) -> Dict[str, Any]:
     """
     СУПЕР-ЛЁГКАЯ схема для Vertex, чтобы избежать ошибки:
@@ -53,22 +49,18 @@ def build_table_patch_schema(table_meta: Dict[str, Any]) -> Dict[str, Any]:
     op_item_schema = {
         "type": "object",
         "properties": {
-            # ожидаем: update_where | delete_where | add_rows (но не ограничиваем enum-ом ради простоты)
             "op": {"type": "string"},
 
-            # where — свободный объект (мы потом валидируем "column"/equals/contains)
             "where": {
                 "type": "object",
                 "additionalProperties": True,
             },
 
-            # set — свободный объект с произвольными ключами (мы потом отфильтруем по schema columns)
             "set": {
                 "type": "object",
                 "additionalProperties": True,
             },
 
-            # rows — массив свободных объектов (мы потом выкинем лишние колонки и приведём типы)
             "rows": {
                 "type": "array",
                 "items": {
@@ -77,7 +69,6 @@ def build_table_patch_schema(table_meta: Dict[str, Any]) -> Dict[str, Any]:
                 },
             },
 
-            # limit — просто integer без min/max, чтобы не усложнять constraints
             "limit": {"type": "integer"},
         },
         "required": ["op"],
@@ -182,8 +173,6 @@ Output format:
 }}
 """.strip()
 
-
-# --------- apply patch to dataframe ---------
 def apply_patch_to_df(
     df: pd.DataFrame,
     patch: Dict[str, Any],
@@ -208,7 +197,6 @@ def apply_patch_to_df(
     pk_cols = table_meta.get("primary_key") or []
     pk_cols = list(pk_cols)
 
-    # Ensure df has all schema columns (if model added missing columns earlier)
     for c in col_names:
         if c not in df.columns:
             df[c] = pd.NA
@@ -246,7 +234,6 @@ def apply_patch_to_df(
                 if s in ("false", "0", "no", "n"):
                     return False
                 return bool(value)
-            # string
             return str(value)
         except Exception:
             warnings.append(f"Could not coerce value for column '{col}': {value!r}. Keeping raw.")
@@ -269,7 +256,6 @@ def apply_patch_to_df(
             return series.astype(str).str.contains(needle, case=False, na=False)
 
         if equals is None:
-            # only column provided => treat as "not null"
             return series.notna()
 
         eq_str = str(equals)
@@ -325,7 +311,6 @@ def apply_patch_to_df(
             except Exception:
                 row[pk] = None
 
-    # Apply operations
     for i, op in enumerate(ops, start=1):
         if not isinstance(op, dict):
             warnings.append(f"Op #{i} is not an object. Skipped.")
@@ -341,7 +326,6 @@ def apply_patch_to_df(
                 warnings.append(f"update_where op #{i} has empty 'set'. Skipped.")
                 continue
 
-            # Disallow PK modifications
             for pk in pk_cols:
                 if pk in set_map:
                     warnings.append(f"update_where op #{i}: attempt to modify PK '{pk}' is ignored.")
@@ -373,7 +357,6 @@ def apply_patch_to_df(
                 coerced = _coerce_value(col, val)
                 df.loc[idxs, col] = coerced
 
-            # FK columns: force allowed
             for fk_col, allowed in (fk_allowed_values or {}).items():
                 if not allowed or fk_col not in df.columns:
                     continue
@@ -415,10 +398,8 @@ def apply_patch_to_df(
                     warnings.append(f"add_rows op #{i}: row is not an object. Skipped.")
                     continue
 
-                # Ensure no extra cols
                 clean = {k: r.get(k) for k in col_names if k in r}
 
-                # Coerce
                 for col in list(clean.keys()):
                     clean[col] = _coerce_value(col, clean[col])
 
@@ -434,7 +415,6 @@ def apply_patch_to_df(
         else:
             warnings.append(f"Unknown op type '{op_type}' in op #{i}. Skipped.")
 
-    # Ensure column order = schema order (plus any extra columns at the end)
     ordered = [c for c in col_names if c in df.columns]
     extras = [c for c in df.columns if c not in ordered]
     df = df[ordered + extras]
