@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Develop a new generation AI assistant.,2023-01-15,2024-06-30,1,In Progress,500000.0
+2,Operation Blue Sky,Implement a cloud migration strategy.,2022-11-01,2023-05-15,2,Completed,250000.0
+3,Project Nightingale,Create a telehealth platform.,2023-04-01,2024-03-31,3,In Progress,750000.0
+4,Project Titan,Upgrade the ERP system.,2022-09-01,2023-02-28,4,Completed,150000.0
+5,Project Gemini,Develop a mobile app for customer engagement.,2023-07-01,2024-12-31,5,Planning,600000.0
+6,Project Voyager,Explore new markets in Southeast Asia.,2022-05-01,2023-04-30,6,Completed,300000.0
+7,Project Aurora,Implement a cybersecurity enhancement program.,2023-02-15,2023-12-31,7,In Progress,400000.0
+8,Project Zenith,Develop a data analytics platform.,2022-08-01,2023-01-31,8,Completed,200000.0
+9,Project Horizon,Expand into the European market.,2023-05-01,2024-04-30,9,Planning,800000.0
+10,Project Apollo,Upgrade the network infrastructure.,2022-12-01,2023-06-30,10,Completed,350000.0

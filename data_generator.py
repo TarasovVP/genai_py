@@ -1,4 +1,3 @@
-# data_generator.py
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Callable
@@ -8,7 +7,6 @@ import pandas as pd
 from vertex_client import VertexGenAIClient
 
 
-# --------- type mapping ---------
 def _map_sql_type_to_json(sql_type: str) -> str:
     t = (sql_type or "").strip().lower()
     base = t.split("(")[0].strip()
@@ -19,11 +17,9 @@ def _map_sql_type_to_json(sql_type: str) -> str:
         return "number"
     if base in ("bool", "boolean"):
         return "boolean"
-    # date/time/uuid пусть будут string
     return "string"
 
 
-# --------- schema/prompt builders ---------
 def build_table_response_schema(table_name: str, table_meta: Dict[str, Any]) -> Dict[str, Any]:
     props: Dict[str, Any] = {}
     required: List[str] = []
@@ -141,7 +137,6 @@ Here is the invalid output (truncated):
 """.strip()
 
 
-# --------- dependency order ---------
 def _build_dependency_order(schema: Dict[str, Any]) -> List[str]:
     tables = schema["tables"]
     deps = {t: set() for t in tables.keys()}
@@ -169,7 +164,6 @@ def _build_dependency_order(schema: Dict[str, Any]) -> List[str]:
     return order
 
 
-# --------- postprocess helpers (чтобы FK/PK точно совпали) ---------
 def _postprocess_primary_key(rows: List[Dict[str, Any]], table_meta: Dict[str, Any]) -> None:
     pk = table_meta.get("primary_key") or []
     if len(pk) != 1:
@@ -213,22 +207,15 @@ def _safe_progress_call(
         return
 
 
-# --------- batching helpers ---------
 def _estimate_cols_count(table_meta: Dict[str, Any]) -> int:
     cols = table_meta.get("columns") or {}
     return max(1, len(cols))
 
 
 def _choose_batch_size_smart(expected_rows: int, max_output_tokens: int, table_meta: Dict[str, Any]) -> int:
-    """
-    Эвристика:
-    - чем больше max_output_tokens, тем больше можно строк в батче
-    - чем больше колонок, тем меньше строк (JSON толще)
-    """
     mot = int(max_output_tokens)
     cols = _estimate_cols_count(table_meta)
 
-    # базовая “ёмкость” по токенам
     if mot <= 512:
         cap = 20
     elif mot <= 1024:
@@ -240,7 +227,6 @@ def _choose_batch_size_smart(expected_rows: int, max_output_tokens: int, table_m
     else:
         cap = 400
 
-    # штраф за колонки (10 колонок = 1x, 20 = /2, 40 = /4)
     factor = max(1.0, cols / 10.0)
     batch = int(cap / factor)
 
@@ -248,12 +234,8 @@ def _choose_batch_size_smart(expected_rows: int, max_output_tokens: int, table_m
 
 
 def _min_tokens_for_batch(table_meta: Dict[str, Any], batch_rows: int) -> int:
-    """
-    Грубая нижняя оценка токенов, чтобы не просить 200 строк при max_tokens=100.
-    Чем больше колонок/строк — тем больше токенов.
-    """
     cols = _estimate_cols_count(table_meta)
-    est = int(batch_rows * cols * 8)  # грубо, но как страховка ок
+    est = int(batch_rows * cols * 8)
     return max(800, min(est, 8192))
 
 
@@ -268,7 +250,6 @@ def _progress_table_label(
     return f"{table_name} ({collected}/{expected_total} rows, batch {request_count}, +{cur_batch}, bs={batch_size})"
 
 
-# --------- main entry ---------
 def generate_all_tables(
     vertex: VertexGenAIClient,
     ddl_schema: Dict[str, Any],
@@ -287,14 +268,12 @@ def generate_all_tables(
     total_tables = len(order)
     expected_total = int(rows_per_table)
 
-    # страховка, чтобы не уйти в бесконечность
     max_batch_requests_per_table = 80
 
     for idx, table_name in enumerate(order, start=1):
         meta = tables[table_name]
         fks = meta.get("foreign_keys") or []
 
-        # собрать allowed значения для FK из уже сгенерированных родителей
         fk_allowed_values: Dict[str, List[Any]] = {}
         for fk in fks:
             child_cols = fk.get("columns") or []
@@ -319,10 +298,8 @@ def generate_all_tables(
             allowed = [r.get(parent_ref_col) for r in parent_rows if parent_ref_col in r]
             fk_allowed_values[child_fk_col] = [v for v in allowed if v is not None]
 
-        # --------- batching ---------
         all_rows: List[Dict[str, Any]] = []
 
-        # FIX 1: batch_size 50+
         effective_tokens_for_batching = min(max(int(max_output_tokens), 2048), 8192)
         batch_size = _choose_batch_size_smart(expected_total, effective_tokens_for_batching, meta)
 
@@ -333,7 +310,6 @@ def generate_all_tables(
         last_len = -1
         consecutive_underfilled = 0
 
-        # старт таблицы
         _safe_progress_call(
             on_progress,
             idx - 1,
@@ -353,7 +329,6 @@ def generate_all_tables(
             remaining = expected_total - len(all_rows)
             cur_batch = min(batch_size, remaining)
 
-            # прогресс: перед запросом
             _safe_progress_call(
                 on_progress,
                 idx - 1,
@@ -377,7 +352,6 @@ def generate_all_tables(
                 "- Ensure rows are diverse and not duplicates.\n"
             )
 
-            # токены должны соответствовать батчу
             req_tokens_min = _min_tokens_for_batch(meta, cur_batch)
             req_tokens = max(int(max_output_tokens), req_tokens_min)
             req_tokens = min(req_tokens, 8192)
@@ -413,7 +387,6 @@ def generate_all_tables(
                     f"Raw head:\n{getattr(vertex, 'last_raw', '')[:800]}"
                 )
 
-            # если недодали — не падаем, но отметим
             if len(rows) < cur_batch:
                 consecutive_underfilled += 1
             else:
@@ -421,7 +394,6 @@ def generate_all_tables(
 
             all_rows.extend(rows)
 
-            # защита от зависания
             if len(all_rows) == last_len:
                 raise RuntimeError(
                     f"Table '{table_name}': no progress while collecting rows.\n"
@@ -431,12 +403,10 @@ def generate_all_tables(
                 )
             last_len = len(all_rows)
 
-            # адаптация батча
             if consecutive_underfilled >= 2 and batch_size > 10:
                 batch_size = max(10, batch_size // 2)
                 consecutive_underfilled = 0
 
-            # прогресс: после добавления строк
             _safe_progress_call(
                 on_progress,
                 idx - 1,
@@ -454,7 +424,6 @@ def generate_all_tables(
         dfs[table_name] = df
         generated_rows[table_name] = all_rows
 
-        # таблица завершена
         _safe_progress_call(
             on_progress,
             idx,
