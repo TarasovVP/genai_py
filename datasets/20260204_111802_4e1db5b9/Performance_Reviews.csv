@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,Excellent performance this quarter.,Focus on leadership skills.,Completed
+2,2,3,2023-02-20,3,"Good work, needs improvement in project management.",Complete project management certification.,Completed
+3,3,4,2023-03-25,5,Outstanding contributions to the team.,Mentor junior team members.,Completed
+4,4,5,2023-04-30,2,Needs significant improvement in communication.,Attend communication skills workshop.,Completed
+5,5,6,2023-05-05,4,Consistently meets expectations.,Explore new technologies relevant to the role.,Completed
+6,6,7,2023-06-10,3,"Shows potential, needs more initiative.",Take ownership of a small project.,Completed
+7,7,8,2023-07-15,5,A valuable asset to the company.,Present findings at an industry conference.,Completed
+8,8,9,2023-08-20,2,"Performance below expectations, requires immediate improvement.",Develop a detailed improvement plan.,Completed
+9,9,10,2023-09-25,4,Demonstrates strong technical skills.,Lead a technical training session for the team.,Completed
+10,10,1,2023-10-30,3,"Satisfactory performance, needs to be more proactive.",Participate in a cross-functional project.,Completed

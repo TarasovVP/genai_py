@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple, Optional
 import random
 import pandas as pd
 
+
 def _map_sql_type_to_json(sql_type: str) -> str:
     t = (sql_type or "").strip().lower()
     base = t.split("(")[0].strip()
@@ -37,30 +38,18 @@ def _table_columns_props(table_meta: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
 
 
 def build_table_patch_schema(table_meta: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    СУПЕР-ЛЁГКАЯ схема для Vertex, чтобы избежать ошибки:
-    "schema produces a constraint that has too many states for serving"
-
-    Ключевая идея:
-    - НЕ вшиваем список колонок в JSON schema (это взрывает количество состояний).
-    - Разрешаем свободные объекты в where/set/rows, а строгость обеспечиваем в apply_patch_to_df.
-    """
-
     op_item_schema = {
         "type": "object",
         "properties": {
             "op": {"type": "string"},
-
             "where": {
                 "type": "object",
                 "additionalProperties": True,
             },
-
             "set": {
                 "type": "object",
                 "additionalProperties": True,
             },
-
             "rows": {
                 "type": "array",
                 "items": {
@@ -68,7 +57,6 @@ def build_table_patch_schema(table_meta: Dict[str, Any]) -> Dict[str, Any]:
                     "additionalProperties": True,
                 },
             },
-
             "limit": {"type": "integer"},
         },
         "required": ["op"],
@@ -173,16 +161,13 @@ Output format:
 }}
 """.strip()
 
+
 def apply_patch_to_df(
     df: pd.DataFrame,
     patch: Dict[str, Any],
     table_meta: Dict[str, Any],
     fk_allowed_values: Dict[str, List[Any]],
 ) -> Tuple[pd.DataFrame, List[str]]:
-    """
-    Возвращает (new_df, warnings).
-    Делает best-effort приведение типов и соблюдение PK/FK.
-    """
     warnings: List[str] = []
 
     if not isinstance(patch, dict) or "ops" not in patch:
@@ -204,7 +189,6 @@ def apply_patch_to_df(
     df = df.copy()
 
     def _coerce_value(col: str, value: Any) -> Any:
-        """Try to coerce to schema type."""
         info = meta_cols.get(col, {}) or {}
         sql_type = (info.get("type_pg") or info.get("type") or info.get("type_raw") or "").lower()
         jt = _map_sql_type_to_json(sql_type)
@@ -428,11 +412,6 @@ def fix_fk_for_table(
     parent_tables: Dict[str, pd.DataFrame],
     schema_tables: Dict[str, Any],
 ) -> Tuple[pd.DataFrame, int]:
-    """
-    Пробегается по foreign_keys child таблицы и заменяет значения,
-    которых нет в parent таблице, на случайные допустимые.
-    Возвращает (new_df, fixes_count).
-    """
     fixes = 0
     fks = child_table_meta.get("foreign_keys") or []
     if not fks:
