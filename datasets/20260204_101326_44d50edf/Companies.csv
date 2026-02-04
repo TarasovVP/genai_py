@@ -1,0 +1,11 @@
+company_id,name,address,city,state,zip_code,phone_number,industry,website
+1,Acme Corp,123 Main St,city Anytown,CA,91234,555-123-4567,Technology,www.acme.com
+2,Beta Industries,456 Oak Ave,city Springfield,IL,62704,217-555-7890,Manufacturing,www.betaind.net
+3,Gamma Solutions,789 Pine Ln,city Denver,CO,80202,303-555-2345,Consulting,www.gammasolutions.org
+4,Delta Systems,101 Elm St,city Austin,TX,73301,512-555-6789,Software,www.deltasystems.com
+5,Epsilon Enterprises,222 Maple Dr,city Seattle,WA,98101,206-555-3456,Retail,www.epsilonenterprises.net
+6,Zeta Group,333 Birch Rd,city Miami,FL,33101,305-555-8901,Finance,www.zetagroup.org
+7,Eta Corp,444 Cedar Ave,city New York,NY,10001,212-555-4567,Media,www.etacorp.com
+8,Theta Industries,555 Oak St,city Chicago,IL,60601,312-555-9012,Real Estate,www.thetaind.net
+9,Iota Solutions,666 Pine Ave,city Los Angeles,CA,90001,213-555-5678,Healthcare,www.iotasolutions.org
+10,Kappa Systems,777 Elm Dr,city Houston,TX,77001,713-555-2345,Energy,www.kappasystems.com

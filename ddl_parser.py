@@ -24,12 +24,6 @@ def _normalize_ws(s: str) -> str:
 
 
 def _remove_sql_comments(ddl: str) -> str:
-    """
-    Removes SQL comments:
-      - line comments: -- ... (until end of line)
-      - block comments: /* ... */
-    Keeps string literals intact.
-    """
     out: List[str] = []
     i = 0
     in_single = False
@@ -39,7 +33,6 @@ def _remove_sql_comments(ddl: str) -> str:
         ch = ddl[i]
         nxt = ddl[i + 1] if i + 1 < len(ddl) else ""
 
-        # Toggle quotes (respecting escaped single quotes '')
         if ch == "'" and not in_double:
             if in_single and nxt == "'":
                 out.append("''")
@@ -57,20 +50,17 @@ def _remove_sql_comments(ddl: str) -> str:
             continue
 
         if not in_single and not in_double:
-            # Line comment --
             if ch == "-" and nxt == "-":
                 i += 2
-                # skip until end of line
                 while i < len(ddl) and ddl[i] not in ("\n", "\r"):
                     i += 1
                 continue
 
-            # Block comment /* ... */
             if ch == "/" and nxt == "*":
                 i += 2
                 while i + 1 < len(ddl) and not (ddl[i] == "*" and ddl[i + 1] == "/"):
                     i += 1
-                i += 2  # skip closing */
+                i += 2
                 continue
 
         out.append(ch)
@@ -80,9 +70,6 @@ def _remove_sql_comments(ddl: str) -> str:
 
 
 def _split_top_level_commas(s: str) -> List[str]:
-    """
-    Split string by commas that are not inside parentheses or quotes.
-    """
     parts: List[str] = []
     buf: List[str] = []
     depth = 0
@@ -93,9 +80,7 @@ def _split_top_level_commas(s: str) -> List[str]:
     while i < len(s):
         ch = s[i]
 
-        # handle quotes
         if ch == "'" and not in_double:
-            # handle escaped single quote '' inside string
             if in_single and i + 1 < len(s) and s[i + 1] == "'":
                 buf.append("''")
                 i += 2
@@ -134,10 +119,6 @@ def _split_top_level_commas(s: str) -> List[str]:
 
 
 def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
-    """
-    Returns list of (table_name, body_inside_parentheses) for each CREATE TABLE.
-    Works by scanning and matching outer parentheses.
-    """
     text = ddl
     lower = ddl.lower()
 
@@ -150,7 +131,6 @@ def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
             break
         start = idx + m.start()
 
-        # Find table name after CREATE TABLE [IF NOT EXISTS]
         after = text[start:]
         mname = re.search(
             r"create\s+table\s+(if\s+not\s+exists\s+)?(?P<name>(\"[^\"]+\"|\w+)(\.(\"[^\"]+\"|\w+))?)",
@@ -165,7 +145,6 @@ def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
         name_parts = [p for p in raw_name.split(".")]
         table_name = _strip_quotes(name_parts[-1])
 
-        # Find first '(' after the name match end
         pos = start + mname.end()
         while pos < len(text) and text[pos] != "(":
             pos += 1
@@ -173,7 +152,6 @@ def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
             idx = start + 10
             continue
 
-        # Extract balanced parentheses content
         open_pos = pos
         depth = 0
         in_single = False
@@ -183,7 +161,6 @@ def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
             ch = text[i]
 
             if ch == "'" and not in_double:
-                # handle escaped single quote
                 if in_single and i + 1 < len(text) and text[i + 1] == "'":
                     i += 2
                     continue
@@ -204,72 +181,52 @@ def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
                         break
             i += 1
         else:
-            # no closing ')'
             idx = start + 10
 
     return results
 
 
 def _to_postgres_type(type_raw: str) -> Dict[str, Any]:
-    """
-    Convert common MySQL-ish types to PostgreSQL-friendly representation.
-    Returns dict with:
-      - type_pg: string
-      - enum_values: optional list[str]
-      - notes: optional string
-    """
     t = _normalize_ws(type_raw)
     tl = t.lower()
 
-    # INT / INTEGER
     if re.fullmatch(r"(int|integer)", tl):
         return {"type_pg": "INTEGER"}
 
-    # BIGINT
     if tl == "bigint":
         return {"type_pg": "BIGINT"}
 
-    # VARCHAR(n)
     m = re.fullmatch(r"varchar\s*\(\s*(\d+)\s*\)", tl, flags=re.IGNORECASE)
     if m:
         return {"type_pg": f"VARCHAR({m.group(1)})"}
 
-    # CHAR(n)
     m = re.fullmatch(r"char\s*\(\s*(\d+)\s*\)", tl, flags=re.IGNORECASE)
     if m:
         return {"type_pg": f"CHAR({m.group(1)})"}
 
-    # TEXT
     if tl == "text":
         return {"type_pg": "TEXT"}
 
-    # BOOLEAN
     if tl in ("bool", "boolean"):
         return {"type_pg": "BOOLEAN"}
 
-    # DATE
     if tl == "date":
         return {"type_pg": "DATE"}
 
-    # DATETIME -> TIMESTAMP
     if tl == "datetime":
         return {"type_pg": "TIMESTAMP"}
 
-    # TIMESTAMP
     if tl.startswith("timestamp"):
         return {"type_pg": "TIMESTAMP"}
 
-    # DECIMAL(p,s) -> NUMERIC(p,s)
     m = re.fullmatch(r"decimal\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)", tl, flags=re.IGNORECASE)
     if m:
         return {"type_pg": f"NUMERIC({m.group(1)}, {m.group(2)})"}
 
-    # NUMERIC(p,s)
     m = re.fullmatch(r"numeric\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)", tl, flags=re.IGNORECASE)
     if m:
         return {"type_pg": f"NUMERIC({m.group(1)}, {m.group(2)})"}
 
-    # ENUM('a','b',...) -> TEXT + enum_values
     m = re.fullmatch(r"enum\s*\((.+)\)", t, flags=re.IGNORECASE)
     if m:
         inside = m.group(1).strip()
@@ -307,20 +264,14 @@ def _to_postgres_type(type_raw: str) -> Dict[str, Any]:
             "notes": "ENUM converted to TEXT; consider CREATE TYPE + enum in Postgres"
         }
 
-    # fallback: keep as-is but uppercase
     return {"type_pg": t.upper(), "notes": "Unmapped type; kept as-is"}
 
 
 def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str, Any]], Optional[List[str]]]:
-    """
-    Returns (column_name, column_info, fk_if_any, pk_cols_if_inline)
-    """
     s = _normalize_ws(item)
 
-    # Remove leading CONSTRAINT <name> if present (for inline constraints)
     s = re.sub(r"^constraint\s+(\w+|\"[^\"]+\")\s+", "", s, flags=re.IGNORECASE)
 
-    # Column name: first token (possibly quoted)
     mcol = re.match(r'^(?P<col>"[^"]+"|\w+)\s+(?P<rest>.+)$', s)
     if not mcol:
         raise ValueError(f"Cannot parse column definition: {item}")
@@ -328,10 +279,8 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
     col_name = _strip_quotes(mcol.group("col"))
     rest = mcol.group("rest")
 
-    # Detect AUTO_INCREMENT (MySQL) as a hint for identity
     auto_increment = bool(re.search(r"\bauto_increment\b", rest, flags=re.IGNORECASE))
 
-    # Determine type: consume tokens until a constraint keyword appears (roughly)
     tokens = rest.split(" ")
     type_tokens: List[str] = []
     i = 0
@@ -378,10 +327,14 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
         on_delete = None
         on_update = None
         mod = rest[mref.end():]
-        mdel = re.search(r"\bon\s+delete\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
-                         mod, flags=re.IGNORECASE)
-        mupd = re.search(r"\bon\s+update\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
-                         mod, flags=re.IGNORECASE)
+        mdel = re.search(
+            r"\bon\s+delete\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
+            mod, flags=re.IGNORECASE
+        )
+        mupd = re.search(
+            r"\bon\s+update\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
+            mod, flags=re.IGNORECASE
+        )
         if mdel:
             on_delete = _normalize_ws(mdel.group(1)).upper()
         if mupd:
@@ -403,7 +356,6 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
         "type_pg": pg["type_pg"],
         "enum_values": pg.get("enum_values"),
         "type_notes": pg.get("notes"),
-
         "nullable": nullable,
         "default": default_expr,
         "primary_key": is_pk,
@@ -411,7 +363,6 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
         "auto_increment": auto_increment
     }
 
-    # Identity hint for Postgres
     if auto_increment and col_info["type_pg"] in ("INTEGER", "BIGINT"):
         col_info["identity"] = True
 
@@ -422,7 +373,6 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
 def _parse_table_constraint(item: str) -> Dict[str, Any]:
     s = _normalize_ws(item)
 
-    # Strip leading CONSTRAINT <name>
     mcon = re.match(r'^constraint\s+(?P<cname>"[^"]+"|\w+)\s+(?P<rest>.+)$', s, flags=re.IGNORECASE)
     constraint_name = None
     rest = s
@@ -430,19 +380,16 @@ def _parse_table_constraint(item: str) -> Dict[str, Any]:
         constraint_name = _strip_quotes(mcon.group("cname"))
         rest = mcon.group("rest")
 
-    # PRIMARY KEY (...)
     mpk = re.match(r"primary\s+key\s*\((?P<cols>[^)]+)\)", rest, flags=re.IGNORECASE)
     if mpk:
         cols = [_strip_quotes(x.strip()) for x in mpk.group("cols").split(",")]
         return {"type": "primary_key", "name": constraint_name, "columns": cols}
 
-    # UNIQUE (...)
     muq = re.match(r"unique\s*\((?P<cols>[^)]+)\)", rest, flags=re.IGNORECASE)
     if muq:
         cols = [_strip_quotes(x.strip()) for x in muq.group("cols").split(",")]
         return {"type": "unique", "name": constraint_name, "columns": cols}
 
-    # FOREIGN KEY (...) REFERENCES table(...)
     mfk = re.match(
         r"foreign\s+key\s*\((?P<cols>[^)]+)\)\s+references\s+(?P<table>(\"[^\"]+\"|\w+)(\.(\"[^\"]+\"|\w+))?)\s*(\((?P<refcols>[^)]+)\))?(?P<mods>.*)$",
         rest, flags=re.IGNORECASE
@@ -457,10 +404,14 @@ def _parse_table_constraint(item: str) -> Dict[str, Any]:
         mods = mfk.group("mods") or ""
         on_delete = None
         on_update = None
-        mdel = re.search(r"\bon\s+delete\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
-                         mods, flags=re.IGNORECASE)
-        mupd = re.search(r"\bon\s+update\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
-                         mods, flags=re.IGNORECASE)
+        mdel = re.search(
+            r"\bon\s+delete\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
+            mods, flags=re.IGNORECASE
+        )
+        mupd = re.search(
+            r"\bon\s+update\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
+            mods, flags=re.IGNORECASE
+        )
         if mdel:
             on_delete = _normalize_ws(mdel.group(1)).upper()
         if mupd:
@@ -476,7 +427,6 @@ def _parse_table_constraint(item: str) -> Dict[str, Any]:
             "on_update": on_update
         }
 
-    # CHECK (...)
     mchk = re.match(r"check\s*\((?P<expr>.+)\)", rest, flags=re.IGNORECASE)
     if mchk:
         return {"type": "check", "name": constraint_name, "expression": _normalize_ws(mchk.group("expr"))}

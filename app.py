@@ -21,9 +21,6 @@ from data_editor import (
     apply_patch_to_df,
 )
 
-# ----------------------------
-# Defaults (moved from "More parameters")
-# ----------------------------
 DEFAULT_ROWS_PER_TABLE = 10
 DEFAULT_SEED = 0
 
@@ -31,22 +28,13 @@ DEFAULT_VERTEX_PROJECT = "gd-gcp-gridu-genai"
 DEFAULT_VERTEX_LOCATION = "europe-west1"
 DEFAULT_VERTEX_MODEL = "gemini-2.0-flash-001"
 
-# ----------------------------
-# Persistence
-# ----------------------------
 DATASETS_ROOT = Path("datasets")
 DATASETS_ROOT.mkdir(parents=True, exist_ok=True)
 
-# ----------------------------
-# Page setup
-# ----------------------------
 st.set_page_config(page_title="Data Assistant", layout="wide")
 
-# ----------------------------
-# Session state
-# ----------------------------
 if "tables" not in st.session_state:
-    st.session_state.tables = {}  # dict[str, pd.DataFrame]
+    st.session_state.tables = {}
 
 if "ddl_text" not in st.session_state:
     st.session_state.ddl_text = ""
@@ -60,18 +48,12 @@ if "last_error" not in st.session_state:
 if "dataset_prompt" not in st.session_state:
     st.session_state.dataset_prompt = ""
 
-# NEW: datasets registry + current dataset pointer
 if "datasets" not in st.session_state:
-    # dataset_id -> meta
-    # meta: { "created_at_utc": str, "path": str, "tables": [..] }
     st.session_state.datasets = {}
 
 if "current_dataset_id" not in st.session_state:
     st.session_state.current_dataset_id = None
 
-# ----------------------------
-# Sidebar
-# ----------------------------
 st.sidebar.title("Data Assistant")
 page = st.sidebar.radio(
     label="",
@@ -79,9 +61,7 @@ page = st.sidebar.radio(
     index=0,
 )
 
-# ----------------------------
-# Helpers
-# ----------------------------
+
 def seed_demo_tables():
     st.session_state.tables = {
         "users": pd.DataFrame(
@@ -135,8 +115,8 @@ def _get_table_meta(table_name: str) -> dict:
 
 def _compute_fk_allowed_values_for_table(table_name: str) -> dict[str, list]:
     """
-    Для таблицы table_name находим все FK (child_col -> parent_table.parent_col)
-    и строим allowed значения на основании уже имеющихся parent DataFrame в session_state.tables.
+    For the given table_name, finds all foreign keys (child_col -> parent_table.parent_col)
+    and builds allowed values based on already generated parent DataFrames in session_state.tables.
     """
     schema_tables = _get_schema_tables()
     meta = schema_tables.get(table_name, {}) or {}
@@ -174,9 +154,6 @@ def _compute_fk_allowed_values_for_table(table_name: str) -> dict[str, list]:
     return allowed
 
 
-# ----------------------------
-# Persistence helpers
-# ----------------------------
 def _new_dataset_id() -> str:
     return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
 
@@ -239,13 +216,9 @@ def _tables_to_zip_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
     return bio.read()
 
 
-# ----------------------------
-# Page: Data Generation
-# ----------------------------
 if page == "Data Generation":
     st.markdown("###")
 
-    # глобальная инструкция для датасета (используется при генерации)
     dataset_prompt = st.text_input(
         "Prompt",
         placeholder="Optional: global instructions for the whole dataset (e.g., 'E-commerce dataset for Germany, realistic names, EUR prices')",
@@ -286,7 +259,6 @@ if page == "Data Generation":
             ddl_text = ddl_file.read().decode("utf-8", errors="ignore")
             st.session_state.ddl_text = ddl_text
 
-            # 1) Parse DDL -> schema JSON
             try:
                 schema = parse_ddl_to_schema(ddl_text)
                 st.session_state.schema = schema
@@ -302,7 +274,6 @@ if page == "Data Generation":
             with st.expander("DDL preview"):
                 st.code(st.session_state.ddl_text, language="sql")
 
-            # 2) Generate data via Vertex with progress UI
             try:
                 seed = int(DEFAULT_SEED)
                 rows_per_table = int(DEFAULT_ROWS_PER_TABLE)
@@ -319,9 +290,9 @@ if page == "Data Generation":
                 progress = st.progress(0)
                 started_at = time.time()
 
-                with st.status("Генерация данных в Vertex AI…", expanded=True) as status_ctx:
+                with st.status("Generating data in Vertex AI…", expanded=True) as status_ctx:
                     status_line = status_ctx.empty()
-                    status_line.info("Подготовка…")
+                    status_line.info("Preparing…")
 
                     def on_progress(done: int, total: int, table_label: str):
                         shown_total = max(1, int(total))
@@ -335,7 +306,7 @@ if page == "Data Generation":
                         progress.progress(pct)
 
                         elapsed = _format_elapsed(time.time() - started_at)
-                        status_line.info(f"Генерация: {shown_done}/{shown_total} — {table_label} | ⏱ {elapsed}")
+                        status_line.info(f"Generating: {shown_done}/{shown_total} — {table_label} | ⏱ {elapsed}")
 
                     if _supports_on_progress(generate_all_tables):
                         dfs = generate_all_tables(
@@ -349,7 +320,7 @@ if page == "Data Generation":
                         )
                     else:
                         elapsed = _format_elapsed(time.time() - started_at)
-                        status_line.info(f"Генерация выполняется… | ⏱ {elapsed}")
+                        status_line.info(f"Generation in progress… | ⏱ {elapsed}")
                         dfs = generate_all_tables(
                             vertex=vertex,
                             ddl_schema=schema,
@@ -359,14 +330,13 @@ if page == "Data Generation":
                             dataset_prompt=str(dataset_prompt or ""),
                         )
 
-                    status_ctx.update(label="Генерация завершена ✅", state="complete", expanded=False)
+                    status_ctx.update(label="Generation completed ✅", state="complete", expanded=False)
 
                 progress.progress(100)
-                st.success("Готово. Таблицы сгенерированы.")
+                st.success("Done. Tables generated.")
 
                 st.session_state.tables = dfs
 
-                # 3) Persist dataset to disk (CSV/JSON/DDL)
                 dataset_id = _new_dataset_id()
                 st.session_state.current_dataset_id = dataset_id
 
@@ -391,7 +361,7 @@ if page == "Data Generation":
                 st.error(f"Generation failed: {st.session_state.last_error}")
 
                 if status_ctx is not None:
-                    status_ctx.update(label="Генерация остановлена из-за ошибки ❌", state="error", expanded=True)
+                    status_ctx.update(label="Generation stopped due to an error ❌", state="error", expanded=True)
 
                 if st.session_state.schema and st.session_state.schema.get("errors"):
                     with st.expander("DDL parser issues (schema['errors'])"):
@@ -415,7 +385,6 @@ if page == "Data Generation":
         st.info("No data yet. Click Generate after uploading a schema.")
         st.stop()
 
-    # Export buttons
     st.markdown("###")
     export_left, export_right, export_info = st.columns([1.2, 1.2, 3.6], vertical_alignment="center")
 
@@ -444,14 +413,12 @@ if page == "Data Generation":
         else:
             st.caption("Current dataset_id: not saved yet (generate to create one)")
 
-    # Плейсхолдер для "живого" обновления таблицы
     df_placeholder = st.empty()
     df_placeholder.dataframe(df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.subheader("Edit selected table (LLM patch)")
 
-    # Оставляем только prompt
     edit_prompt = st.text_input(
         "Edit instructions",
         placeholder="e.g., 'Set status=active for all inactive users, delete rows with invalid emails, add 5 new VIP users'",
@@ -523,10 +490,8 @@ if page == "Data Generation":
                             fk_allowed_values=fk_allowed,
                         )
 
-                        # сохраняем и сразу "вживую" обновляем таблицу
                         st.session_state.tables[selected_table] = new_df
 
-                        # Persist table update if dataset exists
                         cur_id = st.session_state.current_dataset_id
                         if cur_id:
                             _save_table_csv(cur_id, selected_table, new_df)
@@ -538,8 +503,6 @@ if page == "Data Generation":
 
                     st.success(f"Edit applied to '{selected_table}'.")
                     st.caption(f"Time: {_format_elapsed(time.time() - started_at)}")
-
-                    # Patch JSON НЕ показываем (по твоему требованию)
 
                     if warnings:
                         with st.expander(f"Warnings ({len(warnings)})"):
@@ -559,9 +522,6 @@ if page == "Data Generation":
                         if fr:
                             st.caption(f"Finish reason: {fr}")
 
-# ----------------------------
-# Page: Talk to your data
-# ----------------------------
 else:
     st.subheader("Talk to your data")
 
@@ -576,7 +536,6 @@ else:
         meta = st.session_state.datasets.get(dataset, {})
         st.caption(f"Dataset path: {meta.get('path')}")
         st.caption(f"Tables: {', '.join(meta.get('tables', []))}")
-        # Пока показываем текущие таблицы, но выбор датасета уже есть.
         tables_for_view = st.session_state.tables
 
     st.markdown("### Tables preview")

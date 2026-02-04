@@ -1,4 +1,3 @@
-# vertex_client.py
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -9,15 +8,6 @@ from google import genai
 
 
 class VertexGenAIClient:
-    """
-    Клиент для Vertex Gemini, который:
-    - аккуратно достаёт текст из resp.text или candidates[0].content.parts
-    - пытается распарсить JSON напрямую или через вырезание блока
-    - при подозрении на "обрезание" (max_output_tokens) увеличивает лимит и ретраит
-    - если всё равно не получилось — делает repair-перегенерацию
-    - возвращает понятные ошибки без "обрезанного JSON" в тексте
-    """
-
     def __init__(
         self,
         project: str,
@@ -28,8 +18,6 @@ class VertexGenAIClient:
         self._client = genai.Client(vertexai=True, project=project, location=location)
         self._model = model
         self._debug = debug
-
-        # debug info (последний сырой ответ и причина завершения)
         self.last_raw: str = ""
         self.last_finish_reason: str = ""
 
@@ -46,7 +34,6 @@ class VertexGenAIClient:
         cur_tokens = int(max_output_tokens)
         cur_temp = float(temperature)
 
-        # 1) основной цикл с расширением токенов при обрезании
         last_raw = ""
         last_finish = ""
 
@@ -78,7 +65,6 @@ class VertexGenAIClient:
 
             break
 
-        # 2) repair (по сути — перегенерация валидного JSON)
         bad_text = last_raw
 
         for _ in range(max(0, repair_attempts)):
@@ -110,10 +96,7 @@ class VertexGenAIClient:
                 bad_text = raw2
                 break
 
-        # 3) финальная ошибка — НОРМАЛЬНАЯ для пользователя
         raise RuntimeError(self._format_user_friendly_error(max_output_tokens))
-
-    # ---------------- internal helpers ----------------
 
     def _call_vertex(
         self,
@@ -134,7 +117,6 @@ class VertexGenAIClient:
                 },
             )
         except Exception as e:
-            # это не токены, это реальный фейл вызова
             raise RuntimeError(f"Vertex call failed: {e}")
 
     def _extract_text(self, resp: Any) -> str:
@@ -191,15 +173,12 @@ class VertexGenAIClient:
         if not s:
             return False
 
-        # начинается как JSON, но не заканчивается закрывающей скобкой
         if s[0] in "{[" and s[-1] not in "}]":
             return True
 
-        # оборванная строка
         if s.count('"') % 2 == 1:
             return True
 
-        # не получилось вырезать сбалансированный блок
         if s[0] in "{[" and _extract_json_block(s) is None:
             return True
 
@@ -208,7 +187,6 @@ class VertexGenAIClient:
     def _should_expand_tokens(self, raw: str, finish_reason: str) -> bool:
         fr = (finish_reason or "").lower()
 
-        # разные варианты у SDK/модели, делаем best-effort
         token_signals = [
             ("max", "token"),
             ("length", ""),
@@ -241,40 +219,37 @@ Invalid output (truncated):
         looks_truncated = self._looks_truncated(raw)
         finish_says_limit = self._should_expand_tokens(raw, finish)
 
-        # 1) токены/обрезание
         if looks_truncated or finish_says_limit:
             msg = (
-                "Генерация не удалась: ответ модели был обрезан из-за ограничения Max Tokens.\n\n"
-                f"Текущее значение Max Tokens: {int(max_output_tokens)}.\n"
-                "Что сделать:\n"
-                "- увеличьте Max Tokens (например, в 2–4 раза)\n"
-                "- или уменьшите Rows per table\n"
-                "- или генерируйте таблицы по очереди/упростите схему (меньше колонок/ограничений)\n"
+                "Generation failed: the model response was truncated due to the Max Tokens limit.\n\n"
+                f"Current Max Tokens: {int(max_output_tokens)}.\n"
+                "What to try:\n"
+                "- increase Max Tokens (e.g., 2–4x)\n"
+                "- or reduce Rows per table\n"
+                "- or generate tables one by one / simplify the schema (fewer columns/constraints)\n"
             )
             if finish:
-                msg += f"\nТехническая причина завершения (finish_reason): {finish}"
+                msg += f"\nFinish reason: {finish}"
             if self._debug and raw:
                 msg += f"\n\nRaw head (debug):\n{raw[:800]}"
             return msg
 
-        # 2) не токены: модель просто не соблюла JSON/schema
         msg = (
-            "Генерация не удалась: модель не вернула валидный JSON, соответствующий schema.\n\n"
-            "Что можно попробовать:\n"
-            "- уменьшить Temperature (например, до 0.2)\n"
-            "- уменьшить Rows per table\n"
-            "- увеличить Max Tokens\n"
-            "- упростить prompt (убрать лишние инструкции)\n"
+            "Generation failed: the model did not return valid JSON matching the schema.\n\n"
+            "What to try:\n"
+            "- reduce Temperature (e.g., to 0.2)\n"
+            "- reduce Rows per table\n"
+            "- increase Max Tokens\n"
+            "- simplify the prompt (remove extra instructions)\n"
         )
         if finish:
-            msg += f"\nТехническая причина завершения (finish_reason): {finish}"
+            msg += f"\nFinish reason: {finish}"
         if self._debug and raw:
             msg += f"\n\nRaw head (debug):\n{raw[:800]}"
         return msg
 
 
 def _extract_json_block(s: str) -> Optional[str]:
-    # убираем ```json ... ```
     s = re.sub(r"```json\s*", "", s, flags=re.IGNORECASE)
     s = s.replace("```", "")
 

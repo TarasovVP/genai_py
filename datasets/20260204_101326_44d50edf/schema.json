@@ -1,0 +1,847 @@
+{
+  "dialect": "postgresql",
+  "tables": {
+    "Companies": {
+      "columns": {
+        "company_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": true,
+          "identity": true
+        },
+        "name": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "address": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "city": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "state": {
+          "type_raw": "VARCHAR(50)",
+          "type": "VARCHAR(50)",
+          "type_pg": "VARCHAR(50)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "zip_code": {
+          "type_raw": "VARCHAR(10)",
+          "type": "VARCHAR(10)",
+          "type_pg": "VARCHAR(10)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "phone_number": {
+          "type_raw": "VARCHAR(20)",
+          "type": "VARCHAR(20)",
+          "type_pg": "VARCHAR(20)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "industry": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "website": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        }
+      },
+      "primary_key": [
+        "company_id"
+      ],
+      "foreign_keys": [],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 9
+    },
+    "Departments": {
+      "columns": {
+        "department_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": true,
+          "identity": true
+        },
+        "company_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "location": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "manager_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        }
+      },
+      "primary_key": [
+        "department_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "company_id"
+          ],
+          "ref_table": "Companies",
+          "ref_columns": [
+            "company_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 6
+    },
+    "Employees": {
+      "columns": {
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": true,
+          "identity": true
+        },
+        "first_name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "last_name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "middle_name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "email": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": true,
+          "auto_increment": false
+        },
+        "phone_number": {
+          "type_raw": "VARCHAR(20)",
+          "type": "VARCHAR(20)",
+          "type_pg": "VARCHAR(20)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "hire_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "job_title": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "department_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "salary": {
+          "type_raw": "DECIMAL(10, 2)",
+          "type": "NUMERIC(10, 2)",
+          "type_pg": "NUMERIC(10, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "employment_status": {
+          "type_raw": "ENUM('Full-time', 'Part-time', 'Contract', 'Temporary')",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": [
+            "Full-time",
+            "Part-time",
+            "Contract",
+            "Temporary"
+          ],
+          "type_notes": "ENUM converted to TEXT; consider CREATE TYPE + enum in Postgres",
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        }
+      },
+      "primary_key": [
+        "employee_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "department_id"
+          ],
+          "ref_table": "Departments",
+          "ref_columns": [
+            "department_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [
+        [
+          "email"
+        ]
+      ],
+      "checks": [],
+      "raw_items_count": 12
+    },
+    "Projects": {
+      "columns": {
+        "project_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": true,
+          "identity": true
+        },
+        "name": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "description": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "start_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "end_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "company_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "project_status": {
+          "type_raw": "ENUM('Planning', 'In Progress', 'Completed', 'On Hold', 'Cancelled')",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": [
+            "Planning",
+            "In Progress",
+            "Completed",
+            "On Hold",
+            "Cancelled"
+          ],
+          "type_notes": "ENUM converted to TEXT; consider CREATE TYPE + enum in Postgres",
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "budget": {
+          "type_raw": "DECIMAL(12, 2)",
+          "type": "NUMERIC(12, 2)",
+          "type_pg": "NUMERIC(12, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        }
+      },
+      "primary_key": [
+        "project_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "company_id"
+          ],
+          "ref_table": "Companies",
+          "ref_columns": [
+            "company_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 9
+    },
+    "Employee_Projects": {
+      "columns": {
+        "employee_project_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": true,
+          "identity": true
+        },
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "project_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "role": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "hours_worked": {
+          "type_raw": "DECIMAL(8, 2)",
+          "type": "NUMERIC(8, 2)",
+          "type_pg": "NUMERIC(8, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "start_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "end_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        }
+      },
+      "primary_key": [
+        "employee_project_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "Employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "ref_table": "Projects",
+          "ref_columns": [
+            "project_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 9
+    },
+    "Employee_Benefits": {
+      "columns": {
+        "benefit_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": true,
+          "identity": true
+        },
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "benefit_type": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "enrollment_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "coverage_amount": {
+          "type_raw": "DECIMAL(10, 2)",
+          "type": "NUMERIC(10, 2)",
+          "type_pg": "NUMERIC(10, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        }
+      },
+      "primary_key": [
+        "benefit_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "Employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 6
+    },
+    "Performance_Reviews": {
+      "columns": {
+        "review_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": true,
+          "identity": true
+        },
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "reviewer_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "review_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "rating": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "comments": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "goals_set": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        },
+        "review_status": {
+          "type_raw": "ENUM('Draft', 'Final', 'Approved')",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": [
+            "Draft",
+            "Final",
+            "Approved"
+          ],
+          "type_notes": "ENUM converted to TEXT; consider CREATE TYPE + enum in Postgres",
+          "nullable": true,
+          "default": "'Draft'",
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false
+        }
+      },
+      "primary_key": [
+        "review_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "Employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        },
+        {
+          "columns": [
+            "reviewer_id"
+          ],
+          "ref_table": "Employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 10
+    }
+  },
+  "errors": []
+}
