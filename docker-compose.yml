@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: data_assistant_pg
+    environment:
+      POSTGRES_DB: data_assistant
+      POSTGRES_USER: data_assistant
+      POSTGRES_PASSWORD: data_assistant
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U data_assistant -d data_assistant"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pg_data:
