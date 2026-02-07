@@ -1,0 +1,11 @@
+employee_project_id,employee_id,project_id,role,hours_worked,start_date,end_date
+1,1,3,Software Engineer,120.5,2023-01-15,2023-05-20
+2,2,1,Project Manager,80.0,2023-02-01,2023-06-30
+3,3,2,Data Analyst,100.75,2023-03-10,2023-07-15
+4,4,4,UI Designer,60.25,2023-04-05,2023-08-10
+5,5,5,QA Tester,40.5,2023-05-01,2023-09-05
+6,6,6,Backend Developer,140.0,2023-06-15,2023-10-20
+7,7,7,Frontend Developer,90.75,2023-07-01,2023-11-30
+8,8,8,DevOps Engineer,110.25,2023-08-10,2023-12-15
+9,9,9,Security Engineer,70.5,2023-09-05,2024-01-10
+10,10,10,Database Admin,50.0,2023-10-01,2024-02-05

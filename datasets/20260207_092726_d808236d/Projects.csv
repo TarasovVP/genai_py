@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Revamping the core infrastructure for improved scalability.,2023-01-15,2023-12-31,1,Completed,500000.0
+2,Mobile App Redesign,Complete overhaul of the user interface and experience for the mobile application.,2023-03-01,2024-02-29,2,In Progress,350000.0
+3,Data Migration to Cloud,Migrating on-premise data warehouses to a cloud-based solution.,2023-05-10,2024-04-30,3,In Progress,750000.0
+4,AI-Powered Customer Support,Implementing an AI-driven chatbot for enhanced customer service.,2023-07-01,2024-06-30,4,Planning,400000.0
+5,Website Optimization Project,Improving website performance and SEO ranking.,2023-09-15,2024-03-15,5,On Hold,150000.0
+6,Supply Chain Management System,Developing a new system for managing the entire supply chain.,2023-11-01,2024-10-31,6,Planning,900000.0
+7,Cybersecurity Enhancement,Strengthening the organization's cybersecurity infrastructure and protocols.,2024-01-01,2024-12-31,7,Not Started,600000.0
+8,New Product Development,Research and development of a new product line to expand market reach.,2024-02-15,2025-02-14,8,Not Started,1200000.0
+9,Employee Training Program,Implementing a comprehensive training program for all employees.,2023-04-01,2023-09-30,9,Completed,100000.0
+10,Office Relocation,Moving the headquarters to a new location.,2023-06-01,2023-08-31,10,Completed,200000.0
