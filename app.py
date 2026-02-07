@@ -21,6 +21,8 @@ from data_editor import (
     apply_patch_to_df,
 )
 
+from postgres_client import PostgresClient, PostgresConfig
+
 DEFAULT_ROWS_PER_TABLE = 10
 DEFAULT_SEED = 0
 
@@ -32,6 +34,12 @@ DATASETS_ROOT = Path("datasets")
 DATASETS_ROOT.mkdir(parents=True, exist_ok=True)
 
 st.set_page_config(page_title="Data Assistant", layout="wide")
+
+DEFAULT_PG_HOST = os.getenv("PG_HOST", "localhost")
+DEFAULT_PG_PORT = int(os.getenv("PG_PORT", "5432"))
+DEFAULT_PG_DB = os.getenv("PG_DB", "data_assistant")
+DEFAULT_PG_USER = os.getenv("PG_USER", "data_assistant")
+DEFAULT_PG_PASSWORD = os.getenv("PG_PASSWORD", "data_assistant")
 
 if "tables" not in st.session_state:
     st.session_state.tables = {}
@@ -54,6 +62,17 @@ if "datasets" not in st.session_state:
 if "current_dataset_id" not in st.session_state:
     st.session_state.current_dataset_id = None
 
+if "pg" not in st.session_state:
+    st.session_state.pg = PostgresClient(
+        PostgresConfig(
+            host=DEFAULT_PG_HOST,
+            port=DEFAULT_PG_PORT,
+            dbname=DEFAULT_PG_DB,
+            user=DEFAULT_PG_USER,
+            password=DEFAULT_PG_PASSWORD,
+        )
+    )
+
 st.sidebar.title("Data Assistant")
 page = st.sidebar.radio(
     label="",
@@ -61,6 +80,42 @@ page = st.sidebar.radio(
     index=0,
 )
 
+def _pg_healthcheck() -> tuple[bool, str]:
+    try:
+        pg: PostgresClient = st.session_state.pg
+        with pg.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select 1;")
+                cur.fetchone()
+        return True, "Connected ✅"
+    except Exception as e:
+        return False, f"Not connected ❌: {e}"
+
+def _pg_full_reload(ddl_text: str, tables: dict[str, pd.DataFrame]) -> dict[str, int]:
+    pg: PostgresClient = st.session_state.pg
+    pg.reset_public_schema()
+    pg.apply_ddl(ddl_text)
+    inserted = pg.insert_tables(tables)
+    return inserted
+
+def _pg_reload_table(table_name: str, df: pd.DataFrame) -> int:
+    pg: PostgresClient = st.session_state.pg
+    with pg.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE;')
+        conn.commit()
+    return pg.insert_df(table_name, df)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("PostgreSQL")
+st.sidebar.caption(f"Host: {DEFAULT_PG_HOST}:{DEFAULT_PG_PORT}")
+st.sidebar.caption(f"DB: {DEFAULT_PG_DB}")
+st.sidebar.caption(f"User: {DEFAULT_PG_USER}")
+ok, msg = _pg_healthcheck()
+if ok:
+    st.sidebar.success(msg)
+else:
+    st.sidebar.error(msg)
 
 def seed_demo_tables():
     st.session_state.tables = {
@@ -81,10 +136,8 @@ def seed_demo_tables():
         ),
     }
 
-
 if not st.session_state.tables:
     seed_demo_tables()
-
 
 def _supports_on_progress(func) -> bool:
     try:
@@ -92,7 +145,6 @@ def _supports_on_progress(func) -> bool:
         return "on_progress" in sig.parameters
     except Exception:
         return False
-
 
 def _format_elapsed(seconds: float) -> str:
     sec = max(0, int(seconds))
@@ -104,24 +156,16 @@ def _format_elapsed(seconds: float) -> str:
         return f"{hh:02d}:{mm:02d}:{ss:02d}"
     return f"{mm:02d}:{ss:02d}"
 
-
 def _get_schema_tables() -> dict:
     return (st.session_state.schema or {}).get("tables", {}) or {}
-
 
 def _get_table_meta(table_name: str) -> dict:
     return _get_schema_tables().get(table_name, {}) or {}
 
-
 def _compute_fk_allowed_values_for_table(table_name: str) -> dict[str, list]:
-    """
-    For the given table_name, finds all foreign keys (child_col -> parent_table.parent_col)
-    and builds allowed values based on already generated parent DataFrames in session_state.tables.
-    """
     schema_tables = _get_schema_tables()
     meta = schema_tables.get(table_name, {}) or {}
     fks = meta.get("foreign_keys") or []
-
     allowed: dict[str, list] = {}
 
     for fk in fks:
@@ -153,30 +197,24 @@ def _compute_fk_allowed_values_for_table(table_name: str) -> dict[str, list]:
 
     return allowed
 
-
 def _new_dataset_id() -> str:
     return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
-
 
 def _dataset_dir(dataset_id: str) -> Path:
     d = DATASETS_ROOT / dataset_id
     d.mkdir(parents=True, exist_ok=True)
     return d
 
-
 def _save_text(path: Path, text: str):
     path.write_text(text or "", encoding="utf-8")
 
-
 def _save_json(path: Path, obj: dict):
     path.write_text(json.dumps(obj or {}, ensure_ascii=False, indent=2), encoding="utf-8")
-
 
 def _save_table_csv(dataset_id: str, table_name: str, df: pd.DataFrame):
     d = _dataset_dir(dataset_id)
     csv_path = d / f"{table_name}.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8")
-
 
 def _save_dataset_to_disk(
     dataset_id: str,
@@ -202,10 +240,8 @@ def _save_dataset_to_disk(
     for tname, tdf in (tables or {}).items():
         _save_table_csv(dataset_id, tname, tdf)
 
-
 def _df_to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8")
-
 
 def _tables_to_zip_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
     bio = BytesIO()
@@ -214,7 +250,6 @@ def _tables_to_zip_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
             zf.writestr(f"{name}.csv", df.to_csv(index=False))
     bio.seek(0)
     return bio.read()
-
 
 if page == "Data Generation":
     st.markdown("###")
@@ -355,6 +390,31 @@ if page == "Data Generation":
                 }
 
                 st.caption(f"Saved dataset: {dataset_id}")
+
+                with st.status("Loading dataset into PostgreSQL…", expanded=True) as pgctx:
+                    line = pgctx.empty()
+                    t0 = time.time()
+                    try:
+                        line.info("Reset schema → apply DDL → insert tables…")
+                        inserted = _pg_full_reload(
+                            ddl_text=st.session_state.ddl_text,
+                            tables=st.session_state.tables,
+                        )
+
+                        total_rows = sum(inserted.values()) if inserted else 0
+                        with st.expander("PostgreSQL load summary"):
+                            st.json(inserted)
+                            st.caption(f"Total rows inserted: {total_rows}")
+
+                        pgctx.update(
+                            label=f"PostgreSQL load completed ✅ ({_format_elapsed(time.time() - t0)})",
+                            state="complete",
+                            expanded=False,
+                        )
+                        st.success("Dataset is now stored in PostgreSQL.")
+                    except Exception as e:
+                        pgctx.update(label="PostgreSQL load failed ❌", state="error", expanded=True)
+                        st.error(f"PostgreSQL load failed: {e}")
 
             except Exception as e:
                 st.session_state.last_error = f"{e}"
@@ -498,6 +558,13 @@ if page == "Data Generation":
 
                         df = new_df
                         df_placeholder.dataframe(df, use_container_width=True, hide_index=True)
+
+                        line.info("Updating table in PostgreSQL…")
+                        try:
+                            inserted = _pg_reload_table(selected_table, new_df)
+                            line.success(f"PostgreSQL updated ✅ (inserted {inserted} rows)")
+                        except Exception as e:
+                            line.error(f"PostgreSQL update failed ❌: {e}")
 
                         sctx.update(label="Edit applied ✅", state="complete", expanded=False)
 
