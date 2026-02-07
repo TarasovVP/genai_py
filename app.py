@@ -6,6 +6,7 @@ import inspect
 import time
 
 import os
+import re
 from pathlib import Path
 from datetime import datetime
 from uuid import uuid4
@@ -80,6 +81,123 @@ page = st.sidebar.radio(
     index=0,
     label_visibility="collapsed",
 )
+
+_ENUM_COL_RE = re.compile(
+    r"""
+    (?P<col>"?[A-Za-z_][A-Za-z0-9_]*"?)
+    \s+
+    ENUM
+    \s*\(
+        (?P<vals>[^)]*)
+    \)
+    (?P<rest>[^,\n]*)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+def _split_enum_vals(vals_raw: str) -> list[str]:
+    vals = []
+    for m in re.finditer(r"'((?:[^'\\]|\\.)*)'\s*(?:,|$)", vals_raw.strip()):
+        v = m.group(1)
+        v = v.replace("\\'", "'")
+        v = v.replace("\\\\", "\\")
+        vals.append(v)
+    return vals
+
+def _escape_sql_literal(s: str) -> str:
+    return s.replace("'", "''")
+
+def normalize_ddl_for_postgres(ddl: str) -> str:
+    s = ddl or ""
+
+    s = re.sub(r"\bAUTO_INCREMENT\b", "", s, flags=re.IGNORECASE)
+
+    s = re.sub(r"\)\s*ENGINE\s*=\s*\w+\s*;?", ");", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bDEFAULT\s+CHARSET\s*=\s*\w+\b", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bCHARSET\s*=\s*\w+\b", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bCOLLATE\s*=\s*[\w_]+\b", "", s, flags=re.IGNORECASE)
+
+    s = re.sub(r"\bUNSIGNED\b", "", s, flags=re.IGNORECASE)
+
+    s = re.sub(r"\bDATETIME\b", "TIMESTAMP", s, flags=re.IGNORECASE)
+
+    def repl_enum(m: re.Match) -> str:
+        col = m.group("col")
+        vals_raw = m.group("vals") or ""
+        rest = (m.group("rest") or "").strip()
+
+        vals = _split_enum_vals(vals_raw)
+        if not vals:
+            return f'{col} TEXT {rest}'.rstrip()
+
+        in_list = ", ".join(f"'{_escape_sql_literal(v)}'" for v in vals)
+        check = f'CHECK ({col} IN ({in_list}))'
+        out = f"{col} TEXT {rest} {check}"
+        out = re.sub(r"\s+", " ", out).strip()
+        return out
+
+    s = _ENUM_COL_RE.sub(repl_enum, s)
+
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\s+\n", "\n", s)
+
+    return s
+
+def _schema_allowed_for_table(table_name: str) -> dict[str, list]:
+    """
+    Returns mapping: column_name -> allowed_values (list[str]) from ddl_parser.
+    """
+    schema_tables = (st.session_state.schema or {}).get("tables", {}) or {}
+    meta = schema_tables.get(table_name, {}) or {}
+    allowed = meta.get("allowed_values") or {}
+    if isinstance(allowed, dict):
+        return allowed
+    return {}
+
+def _normalize_df_to_allowed_values(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each column that has allowed values (from CHECK IN (...) or ENUM),
+    coerce dataframe values to one of allowed:
+      - case-insensitive match (keeps canonical spelling from allowed list)
+      - if not match: fallback to first allowed value
+    """
+    if df is None or df.empty:
+        return df
+
+    allowed_map = _schema_allowed_for_table(table_name)
+    if not allowed_map:
+        return df
+
+    out = df.copy()
+    for col, allowed in allowed_map.items():
+        if not allowed or col not in out.columns:
+            continue
+
+        canon = {str(v).strip().lower(): v for v in allowed if v is not None}
+        default_val = allowed[0] if len(allowed) > 0 else None
+
+        def coerce(x):
+            if x is None or (isinstance(x, float) and pd.isna(x)):
+                return x
+            s = str(x).strip()
+            if s == "":
+                return x
+            key = s.lower()
+            if key in canon:
+                return canon[key]
+            return default_val
+
+        out[col] = out[col].apply(coerce)
+
+    return out
+
+def _normalize_all_tables_to_allowed_values(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    if not tables:
+        return tables
+    fixed: dict[str, pd.DataFrame] = {}
+    for tname, df in tables.items():
+        fixed[tname] = _normalize_df_to_allowed_values(tname, df)
+    return fixed
 
 def _pg_full_reload(ddl_text: str, tables: dict[str, pd.DataFrame]) -> dict[str, int]:
     pg: PostgresClient = st.session_state.pg
@@ -273,8 +391,10 @@ if page == "Data Generation":
             ddl_text = ddl_file.read().decode("utf-8", errors="ignore")
             st.session_state.ddl_text = ddl_text
 
+            ddl_for_pg = normalize_ddl_for_postgres(ddl_text)
+
             try:
-                schema = parse_ddl_to_schema(ddl_text)
+                schema = parse_ddl_to_schema(ddl_for_pg)
                 st.session_state.schema = schema
 
                 st.success("DDL parsed → schema JSON is ready.")
@@ -286,7 +406,7 @@ if page == "Data Generation":
 
             st.success("DDL schema uploaded.")
             with st.expander("DDL preview"):
-                st.code(st.session_state.ddl_text, language="sql")
+                st.code(ddl_for_pg, language="sql")
 
             try:
                 seed = int(DEFAULT_SEED)
@@ -347,8 +467,10 @@ if page == "Data Generation":
                     status_ctx.update(label="Generation completed ✅", state="complete", expanded=False)
 
                 progress.progress(100)
-                st.success("Done. Tables generated.")
 
+                dfs = _normalize_all_tables_to_allowed_values(dfs)
+
+                st.success("Done. Tables generated.")
                 st.session_state.tables = dfs
 
                 dataset_id = _new_dataset_id()
@@ -356,7 +478,7 @@ if page == "Data Generation":
 
                 _save_dataset_to_disk(
                     dataset_id=dataset_id,
-                    ddl_text=st.session_state.ddl_text,
+                    ddl_text=ddl_for_pg,
                     schema=st.session_state.schema,
                     tables=st.session_state.tables,
                     dataset_prompt=str(dataset_prompt or ""),
@@ -375,8 +497,9 @@ if page == "Data Generation":
                     t0 = time.time()
                     try:
                         line.info("Reset schema → apply DDL → insert tables…")
+
                         inserted = _pg_full_reload(
-                            ddl_text=st.session_state.ddl_text,
+                            ddl_text=ddl_for_pg,
                             tables=st.session_state.tables,
                         )
 
@@ -528,6 +651,8 @@ if page == "Data Generation":
                             table_meta=table_meta,
                             fk_allowed_values=fk_allowed,
                         )
+
+                        new_df = _normalize_df_to_allowed_values(selected_table, new_df)
 
                         st.session_state.tables[selected_table] = new_df
 
