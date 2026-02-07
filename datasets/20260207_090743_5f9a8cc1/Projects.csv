@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,City Project Phoenix,City Development of a new shopping mall.,2023-01-15,2024-06-30,1,Completed,1500000.0
+2,City Operation Nightingale,City Implementation of a new healthcare system.,2022-11-01,2023-12-31,2,Completed,800000.0
+3,City Project Blue Sky,City Research and development of clean energy solutions.,2023-05-20,2025-03-15,3,In Progress,2200000.0
+4,City Project Green Earth,City Environmental conservation and sustainability initiatives.,2024-02-10,2026-08-31,4,Planned,1800000.0
+5,City Project Safe Haven,City Development of affordable housing for low-income families.,2022-09-01,2024-01-31,5,Completed,1200000.0
+6,City Project Smart City,City Implementation of smart technologies to improve urban living.,2023-07-01,2025-12-31,6,In Progress,2500000.0
+7,City Project Open Arms,City Support services for refugees and asylum seekers.,2024-04-01,2025-06-30,7,Planned,900000.0
+8,City Project Future Ready,City Educational programs to prepare students for the future workforce.,2022-12-01,2024-05-31,8,Completed,1100000.0
+9,City Project Healthy Living,City Initiatives to promote healthy lifestyles and prevent chronic diseases.,2023-09-01,2025-08-31,9,In Progress,1900000.0
+10,City Project Connected Community,City Development of community centers and social programs.,2024-06-01,2026-12-31,10,Planned,1600000.0
