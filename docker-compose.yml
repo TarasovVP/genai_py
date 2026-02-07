@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: data_assistant
       POSTGRES_PASSWORD: data_assistant
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
