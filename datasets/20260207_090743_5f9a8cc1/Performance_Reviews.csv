@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,Employee consistently exceeds expectations.,Improve presentation skills.,Completed
+2,2,3,2023-02-20,3,Meets expectations. Needs improvement in time management.,Attend time management workshop.,Completed
+3,3,4,2023-03-10,5,Outstanding performance. A valuable asset to the team.,Mentor junior team members.,Completed
+4,4,5,2023-04-05,2,Needs significant improvement in several areas.,Complete training on core skills.,In Progress
+5,5,6,2023-05-12,4,Good performance overall. Shows initiative.,Lead a small project.,Completed
+6,6,7,2023-06-18,3,Meets expectations. Could improve communication skills.,Participate in communication training.,Completed
+7,7,8,2023-07-22,5,Exceptional performance. Demonstrates leadership qualities.,Take on a leadership role in a new initiative.,Completed
+8,8,9,2023-08-01,2,Performance is below expectations. Requires immediate attention.,Develop a performance improvement plan.,In Progress
+9,9,10,2023-09-28,4,Performs well under pressure. A reliable team member.,Cross-train in another department.,Completed
+10,10,1,2023-10-03,3,Meets expectations. Needs to be more proactive.,Take initiative on new projects.,Completed

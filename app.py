@@ -36,7 +36,7 @@ DATASETS_ROOT.mkdir(parents=True, exist_ok=True)
 st.set_page_config(page_title="Data Assistant", layout="wide")
 
 DEFAULT_PG_HOST = os.getenv("PG_HOST", "localhost")
-DEFAULT_PG_PORT = int(os.getenv("PG_PORT", "5432"))
+DEFAULT_PG_PORT = int(os.getenv("PG_PORT", "55432"))
 DEFAULT_PG_DB = os.getenv("PG_DB", "data_assistant")
 DEFAULT_PG_USER = os.getenv("PG_USER", "data_assistant")
 DEFAULT_PG_PASSWORD = os.getenv("PG_PASSWORD", "data_assistant")
@@ -75,21 +75,11 @@ if "pg" not in st.session_state:
 
 st.sidebar.title("Data Assistant")
 page = st.sidebar.radio(
-    label="",
+    label="Navigation",
     options=["Data Generation", "Talk to your data"],
     index=0,
+    label_visibility="collapsed",
 )
-
-def _pg_healthcheck() -> tuple[bool, str]:
-    try:
-        pg: PostgresClient = st.session_state.pg
-        with pg.connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("select 1;")
-                cur.fetchone()
-        return True, "Connected ✅"
-    except Exception as e:
-        return False, f"Not connected ❌: {e}"
 
 def _pg_full_reload(ddl_text: str, tables: dict[str, pd.DataFrame]) -> dict[str, int]:
     pg: PostgresClient = st.session_state.pg
@@ -105,17 +95,6 @@ def _pg_reload_table(table_name: str, df: pd.DataFrame) -> int:
             cur.execute(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE;')
         conn.commit()
     return pg.insert_df(table_name, df)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("PostgreSQL")
-st.sidebar.caption(f"Host: {DEFAULT_PG_HOST}:{DEFAULT_PG_PORT}")
-st.sidebar.caption(f"DB: {DEFAULT_PG_DB}")
-st.sidebar.caption(f"User: {DEFAULT_PG_USER}")
-ok, msg = _pg_healthcheck()
-if ok:
-    st.sidebar.success(msg)
-else:
-    st.sidebar.error(msg)
 
 def seed_demo_tables():
     st.session_state.tables = {
@@ -424,7 +403,7 @@ if page == "Data Generation":
                     status_ctx.update(label="Generation stopped due to an error ❌", state="error", expanded=True)
 
                 if st.session_state.schema and st.session_state.schema.get("errors"):
-                    with st.expander("DDL parser issues (schema['errors'])"):
+                    with st.expander("DDL parser issues"):
                         st.code(
                             json.dumps(st.session_state.schema["errors"], ensure_ascii=False, indent=2),
                             language="json",
@@ -436,7 +415,7 @@ if page == "Data Generation":
     header_left, header_right = st.columns([4, 1], vertical_alignment="center")
     with header_right:
         table_names = list(st.session_state.tables.keys()) or ["(no tables)"]
-        selected_table = st.selectbox("", options=table_names, label_visibility="collapsed")
+        selected_table = st.selectbox("Table", options=table_names, label_visibility="collapsed")
     with header_left:
         st.write("")
 
