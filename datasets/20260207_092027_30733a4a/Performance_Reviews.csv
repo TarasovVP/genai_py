@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,City Employee is performing well.,City Improve presentation skills.,Completed
+2,2,3,2023-02-20,3,City Needs improvement in teamwork.,City Participate in team-building activities.,Completed
+3,3,4,2023-03-25,5,City Excellent performance and leadership.,City Mentor junior team members.,Completed
+4,4,5,2023-04-30,2,City Performance is below expectations.,City Attend training sessions.,Completed
+5,5,6,2023-05-05,4,City Consistently meets expectations.,City Take on more challenging tasks.,Completed
+6,6,7,2023-06-10,3,City Shows potential for growth.,City Develop technical skills.,Completed
+7,7,8,2023-07-15,5,City Outstanding contribution to the team.,City Lead a project.,Completed
+8,8,9,2023-08-20,2,City Requires significant improvement.,City Seek guidance from senior colleagues.,Completed
+9,9,10,2023-09-25,4,City A valuable asset to the company.,City Share knowledge with others.,Completed
+10,10,1,2023-10-30,3,City Needs to improve communication skills.,City Attend public speaking workshops.,Completed

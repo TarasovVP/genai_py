@@ -12,11 +12,34 @@ _TABLE_CONSTRAINT_PREFIXES = (
 )
 
 
+def _is_quoted_ident(s: str) -> bool:
+    s = s.strip()
+    return (
+        (s.startswith('"') and s.endswith('"') and len(s) >= 2) or
+        (s.startswith("`") and s.endswith("`") and len(s) >= 2) or
+        (s.startswith("[") and s.endswith("]") and len(s) >= 2)
+    )
+
+
 def _strip_quotes(identifier: str) -> str:
     identifier = identifier.strip()
-    if identifier.startswith('"') and identifier.endswith('"') and len(identifier) >= 2:
+    if _is_quoted_ident(identifier):
         return identifier[1:-1]
     return identifier
+
+
+def _normalize_ident(identifier: str) -> str:
+    """
+    Postgres behavior:
+    - unquoted identifiers are folded to lower-case
+    - quoted identifiers preserve case
+    We emulate this so that generated table/column names match actual DDL execution.
+    """
+    raw = (identifier or "").strip()
+    stripped = _strip_quotes(raw)
+    if _is_quoted_ident(raw):
+        return stripped
+    return stripped.lower()
 
 
 def _normalize_ws(s: str) -> str:
@@ -133,7 +156,7 @@ def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
 
         after = text[start:]
         mname = re.search(
-            r"create\s+table\s+(if\s+not\s+exists\s+)?(?P<name>(\"[^\"]+\"|\w+)(\.(\"[^\"]+\"|\w+))?)",
+            r"create\s+table\s+(if\s+not\s+exists\s+)?(?P<name>(\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|\w+)(\.(\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|\w+))?)",
             after,
             flags=re.IGNORECASE
         )
@@ -143,7 +166,7 @@ def _extract_create_table_blocks(ddl: str) -> List[Tuple[str, str]]:
 
         raw_name = mname.group("name")
         name_parts = [p for p in raw_name.split(".")]
-        table_name = _strip_quotes(name_parts[-1])
+        table_name = _normalize_ident(name_parts[-1])
 
         pos = start + mname.end()
         while pos < len(text) and text[pos] != "(":
@@ -267,16 +290,114 @@ def _to_postgres_type(type_raw: str) -> Dict[str, Any]:
     return {"type_pg": t.upper(), "notes": "Unmapped type; kept as-is"}
 
 
+def _extract_check_expressions(s: str) -> List[str]:
+    """
+    Extract CHECK(...) expressions from a column definition tail.
+    Returns list of raw expressions inside CHECK( ... ).
+    Supports multiple CHECKs in one line.
+    """
+    exprs: List[str] = []
+    i = 0
+    low = s.lower()
+    while True:
+        m = re.search(r"\bcheck\s*\(", low[i:])
+        if not m:
+            break
+        start = i + m.end()
+        depth = 1
+        in_single = False
+        in_double = False
+        j = start
+        while j < len(s):
+            ch = s[j]
+            if ch == "'" and not in_double:
+                if in_single and j + 1 < len(s) and s[j + 1] == "'":
+                    j += 2
+                    continue
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                in_double = not in_double
+
+            if not in_single and not in_double:
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                    if depth == 0:
+                        expr = s[start:j].strip()
+                        if expr:
+                            exprs.append(_normalize_ws(expr))
+                        i = j + 1
+                        break
+            j += 1
+        else:
+            break
+    return exprs
+
+
+def _parse_check_in_list(expr: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse very common pattern:
+      <col> IN ('a','b','c')
+    Returns {"column": "<col>", "allowed": [...] } or None
+    """
+    if not expr:
+        return None
+
+    m = re.match(r'^(?P<col>"[^"]+"|`[^`]+`|\[[^\]]+\]|\w+)\s+in\s*\((?P<vals>.+)\)\s*$', expr, flags=re.IGNORECASE)
+    if not m:
+        return None
+
+    col = _normalize_ident(m.group("col"))
+    inside = m.group("vals").strip()
+
+    vals = []
+    buf = []
+    in_single = False
+    in_double = False
+    i = 0
+    while i < len(inside):
+        ch = inside[i]
+        if ch == "'" and not in_double:
+            if in_single and i + 1 < len(inside) and inside[i + 1] == "'":
+                buf.append("'")
+                i += 2
+                continue
+            in_single = not in_single
+            i += 1
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            i += 1
+            continue
+        if ch == "," and not in_single and not in_double:
+            v = "".join(buf).strip()
+            if v:
+                vals.append(v)
+            buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    tail = "".join(buf).strip()
+    if tail:
+        vals.append(tail)
+
+    allowed = [v.strip().strip("'").strip('"') for v in vals if v.strip()]
+    return {"column": col, "allowed": allowed}
+
+
 def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str, Any]], Optional[List[str]]]:
     s = _normalize_ws(item)
 
-    s = re.sub(r"^constraint\s+(\w+|\"[^\"]+\")\s+", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^constraint\s+(\w+|\"[^\"]+\"|`[^`]+`|\[[^\]]+\])\s+", "", s, flags=re.IGNORECASE)
 
-    mcol = re.match(r'^(?P<col>"[^"]+"|\w+)\s+(?P<rest>.+)$', s)
+    mcol = re.match(r'^(?P<col>"[^"]+"|`[^`]+`|\[[^\]]+\]|\w+)\s+(?P<rest>.+)$', s)
     if not mcol:
         raise ValueError(f"Cannot parse column definition: {item}")
 
-    col_name = _strip_quotes(mcol.group("col"))
+    col_raw = mcol.group("col")
+    col_name = _normalize_ident(col_raw)
     rest = mcol.group("rest")
 
     auto_increment = bool(re.search(r"\bauto_increment\b", rest, flags=re.IGNORECASE))
@@ -293,40 +414,50 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
         i += 1
     col_type_raw = " ".join(type_tokens).strip()
 
-    constraints = " ".join(tokens[i:]).strip().lower()
+    constraints_tail = " ".join(tokens[i:]).strip()
+    constraints_low = constraints_tail.lower()
 
     nullable = True
-    if "not null" in constraints:
+    if "not null" in constraints_low:
         nullable = False
 
     default_expr = None
     mdef = re.search(
         r"\bdefault\b\s+(.+?)(?=(\bnot\b|\bnull\b|\bprimary\b|\breferences\b|\bunique\b|\bcheck\b|$))",
-        rest,
+        constraints_tail,
         flags=re.IGNORECASE
     )
     if mdef:
         default_expr = _normalize_ws(mdef.group(1))
 
-    is_pk = bool(re.search(r"\bprimary\s+key\b", rest, flags=re.IGNORECASE))
-    is_unique = bool(re.search(r"\bunique\b", rest, flags=re.IGNORECASE))
+    is_pk = bool(re.search(r"\bprimary\s+key\b", constraints_tail, flags=re.IGNORECASE))
+    is_unique = bool(re.search(r"\bunique\b", constraints_tail, flags=re.IGNORECASE))
+
+    check_exprs = _extract_check_expressions(constraints_tail)
+    parsed_checks: List[Dict[str, Any]] = []
+    for ce in check_exprs:
+        chk: Dict[str, Any] = {"expression": ce}
+        in_list = _parse_check_in_list(ce)
+        if in_list:
+            chk["in_list"] = in_list
+        parsed_checks.append(chk)
 
     fk = None
     mref = re.search(
-        r"\breferences\b\s+(?P<table>(\"[^\"]+\"|\w+)(\.(\"[^\"]+\"|\w+))?)\s*(\((?P<cols>[^)]+)\))?",
-        rest,
+        r"\breferences\b\s+(?P<table>(\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|\w+)(\.(\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|\w+))?)\s*(\((?P<cols>[^)]+)\))?",
+        constraints_tail,
         flags=re.IGNORECASE
     )
     if mref:
         ref_raw = mref.group("table")
-        ref_table = _strip_quotes(ref_raw.split(".")[-1])
+        ref_table = _normalize_ident(ref_raw.split(".")[-1])
         ref_cols = []
         if mref.group("cols"):
-            ref_cols = [_strip_quotes(x.strip()) for x in mref.group("cols").split(",")]
+            ref_cols = [_normalize_ident(x.strip()) for x in mref.group("cols").split(",")]
 
         on_delete = None
         on_update = None
-        mod = rest[mref.end():]
+        mod = constraints_tail[mref.end():]
         mdel = re.search(
             r"\bon\s+delete\b\s+(cascade|restrict|set\s+null|set\s+default|no\s+action)",
             mod, flags=re.IGNORECASE
@@ -360,7 +491,8 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
         "default": default_expr,
         "primary_key": is_pk,
         "unique": is_unique,
-        "auto_increment": auto_increment
+        "auto_increment": auto_increment,
+        "checks": parsed_checks,
     }
 
     if auto_increment and col_info["type_pg"] in ("INTEGER", "BIGINT"):
@@ -373,7 +505,11 @@ def _parse_column_def(item: str) -> Tuple[str, Dict[str, Any], Optional[Dict[str
 def _parse_table_constraint(item: str) -> Dict[str, Any]:
     s = _normalize_ws(item)
 
-    mcon = re.match(r'^constraint\s+(?P<cname>"[^"]+"|\w+)\s+(?P<rest>.+)$', s, flags=re.IGNORECASE)
+    mcon = re.match(
+        r'^constraint\s+(?P<cname>"[^"]+"|`[^`]+`|\[[^\]]+\]|\w+)\s+(?P<rest>.+)$',
+        s,
+        flags=re.IGNORECASE
+    )
     constraint_name = None
     rest = s
     if mcon:
@@ -382,24 +518,24 @@ def _parse_table_constraint(item: str) -> Dict[str, Any]:
 
     mpk = re.match(r"primary\s+key\s*\((?P<cols>[^)]+)\)", rest, flags=re.IGNORECASE)
     if mpk:
-        cols = [_strip_quotes(x.strip()) for x in mpk.group("cols").split(",")]
+        cols = [_normalize_ident(x.strip()) for x in mpk.group("cols").split(",")]
         return {"type": "primary_key", "name": constraint_name, "columns": cols}
 
     muq = re.match(r"unique\s*\((?P<cols>[^)]+)\)", rest, flags=re.IGNORECASE)
     if muq:
-        cols = [_strip_quotes(x.strip()) for x in muq.group("cols").split(",")]
+        cols = [_normalize_ident(x.strip()) for x in muq.group("cols").split(",")]
         return {"type": "unique", "name": constraint_name, "columns": cols}
 
     mfk = re.match(
-        r"foreign\s+key\s*\((?P<cols>[^)]+)\)\s+references\s+(?P<table>(\"[^\"]+\"|\w+)(\.(\"[^\"]+\"|\w+))?)\s*(\((?P<refcols>[^)]+)\))?(?P<mods>.*)$",
+        r"foreign\s+key\s*\((?P<cols>[^)]+)\)\s+references\s+(?P<table>(\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|\w+)(\.(\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|\w+))?)\s*(\((?P<refcols>[^)]+)\))?(?P<mods>.*)$",
         rest, flags=re.IGNORECASE
     )
     if mfk:
-        cols = [_strip_quotes(x.strip()) for x in mfk.group("cols").split(",")]
-        ref_table = _strip_quotes(mfk.group("table").split(".")[-1])
+        cols = [_normalize_ident(x.strip()) for x in mfk.group("cols").split(",")]
+        ref_table = _normalize_ident(mfk.group("table").split(".")[-1])
         ref_cols = []
         if mfk.group("refcols"):
-            ref_cols = [_strip_quotes(x.strip()) for x in mfk.group("refcols").split(",")]
+            ref_cols = [_normalize_ident(x.strip()) for x in mfk.group("refcols").split(",")]
 
         mods = mfk.group("mods") or ""
         on_delete = None
@@ -429,7 +565,12 @@ def _parse_table_constraint(item: str) -> Dict[str, Any]:
 
     mchk = re.match(r"check\s*\((?P<expr>.+)\)", rest, flags=re.IGNORECASE)
     if mchk:
-        return {"type": "check", "name": constraint_name, "expression": _normalize_ws(mchk.group("expr"))}
+        expr = _normalize_ws(mchk.group("expr"))
+        out: Dict[str, Any] = {"type": "check", "name": constraint_name, "expression": expr}
+        in_list = _parse_check_in_list(expr)
+        if in_list:
+            out["in_list"] = in_list
+        return out
 
     return {"type": "unknown", "name": constraint_name, "raw": s}
 
@@ -453,7 +594,8 @@ def parse_ddl_to_schema(ddl_text: str) -> Dict[str, Any]:
             "foreign_keys": [],
             "unique": [],
             "checks": [],
-            "raw_items_count": len(items)
+            "raw_items_count": len(items),
+            "allowed_values": {},
         }
 
         for item in items:
@@ -477,7 +619,10 @@ def parse_ddl_to_schema(ddl_text: str) -> Dict[str, Any]:
                     elif c["type"] == "unique":
                         table["unique"].append(c["columns"])
                     elif c["type"] == "check":
-                        table["checks"].append({"name": c.get("name"), "expression": c["expression"]})
+                        table["checks"].append({"name": c.get("name"), "expression": c["expression"], "in_list": c.get("in_list")})
+                        in_list = c.get("in_list")
+                        if in_list and in_list.get("column") and in_list.get("allowed"):
+                            table["allowed_values"][in_list["column"]] = in_list["allowed"]
                     else:
                         pass
                 else:
@@ -493,6 +638,15 @@ def parse_ddl_to_schema(ddl_text: str) -> Dict[str, Any]:
 
                     if col_info.get("unique"):
                         table["unique"].append([col_name])
+
+                    ev = col_info.get("enum_values") or None
+                    if ev:
+                        table["allowed_values"][col_name] = ev
+
+                    for chk in (col_info.get("checks") or []):
+                        in_list = chk.get("in_list")
+                        if in_list and in_list.get("column") and in_list.get("allowed"):
+                            table["allowed_values"][in_list["column"]] = in_list["allowed"]
 
             except Exception as e:
                 schema["errors"].append({

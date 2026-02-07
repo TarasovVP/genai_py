@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,Employee is performing well and meeting expectations.,Improve communication skills and take on more leadership roles.,Completed
+2,2,3,2023-02-20,3,Employee is meeting some expectations but needs improvement in certain areas.,Focus on time management and project prioritization.,Completed
+3,3,4,2023-03-25,5,Employee is exceeding expectations and demonstrating excellent performance.,Continue to excel in current role and mentor junior team members.,Completed
+4,4,5,2023-04-30,2,Employee is not meeting expectations and needs significant improvement.,Develop a performance improvement plan and seek additional training.,Completed
+5,5,6,2023-05-05,4,"Good performance overall, demonstrating growth.",Seek opportunities for cross-functional collaboration.,Completed
+6,6,7,2023-06-10,3,Needs to improve consistency.,Complete certification in project management.,Completed
+7,7,8,2023-07-15,5,"Exceptional performance, a valuable asset to the team.",Present findings at industry conference.,Completed
+8,8,9,2023-08-20,2,"Requires close supervision, performance is below standard.",Attend mandatory training sessions.,Completed
+9,9,10,2023-09-25,4,A reliable employee.,Lead a team project.,Completed
+10,10,1,2023-10-30,3,Showing potential but needs guidance.,Shadow senior team members.,Completed
