@@ -13,6 +13,8 @@ from uuid import uuid4
 from io import BytesIO
 import zipfile
 
+import matplotlib.pyplot as plt
+
 from ddl_parser import parse_ddl_to_schema
 from vertex_client import VertexGenAIClient
 from data_generator import generate_all_tables
@@ -109,27 +111,21 @@ def _escape_sql_literal(s: str) -> str:
 
 def normalize_ddl_for_postgres(ddl: str) -> str:
     s = ddl or ""
-
     s = re.sub(r"\bAUTO_INCREMENT\b", "", s, flags=re.IGNORECASE)
-
     s = re.sub(r"\)\s*ENGINE\s*=\s*\w+\s*;?", ");", s, flags=re.IGNORECASE)
     s = re.sub(r"\bDEFAULT\s+CHARSET\s*=\s*\w+\b", "", s, flags=re.IGNORECASE)
     s = re.sub(r"\bCHARSET\s*=\s*\w+\b", "", s, flags=re.IGNORECASE)
     s = re.sub(r"\bCOLLATE\s*=\s*[\w_]+\b", "", s, flags=re.IGNORECASE)
-
     s = re.sub(r"\bUNSIGNED\b", "", s, flags=re.IGNORECASE)
-
     s = re.sub(r"\bDATETIME\b", "TIMESTAMP", s, flags=re.IGNORECASE)
 
     def repl_enum(m: re.Match) -> str:
         col = m.group("col")
         vals_raw = m.group("vals") or ""
         rest = (m.group("rest") or "").strip()
-
         vals = _split_enum_vals(vals_raw)
         if not vals:
             return f'{col} TEXT {rest}'.rstrip()
-
         in_list = ", ".join(f"'{_escape_sql_literal(v)}'" for v in vals)
         check = f'CHECK ({col} IN ({in_list}))'
         out = f"{col} TEXT {rest} {check}"
@@ -137,16 +133,11 @@ def normalize_ddl_for_postgres(ddl: str) -> str:
         return out
 
     s = _ENUM_COL_RE.sub(repl_enum, s)
-
     s = re.sub(r"[ \t]+", " ", s)
     s = re.sub(r"\s+\n", "\n", s)
-
     return s
 
 def _schema_allowed_for_table(table_name: str) -> dict[str, list]:
-    """
-    Returns mapping: column_name -> allowed_values (list[str]) from ddl_parser.
-    """
     schema_tables = (st.session_state.schema or {}).get("tables", {}) or {}
     meta = schema_tables.get(table_name, {}) or {}
     allowed = meta.get("allowed_values") or {}
@@ -155,12 +146,6 @@ def _schema_allowed_for_table(table_name: str) -> dict[str, list]:
     return {}
 
 def _normalize_df_to_allowed_values(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
-    """
-    For each column that has allowed values (from CHECK IN (...) or ENUM),
-    coerce dataframe values to one of allowed:
-      - case-insensitive match (keeps canonical spelling from allowed list)
-      - if not match: fallback to first allowed value
-    """
     if df is None or df.empty:
         return df
 
@@ -321,7 +306,6 @@ def _save_dataset_to_disk(
     dataset_prompt: str,
 ):
     d = _dataset_dir(dataset_id)
-
     _save_text(d / "ddl.sql", ddl_text or "")
     _save_json(d / "schema.json", schema or {})
     _save_json(
@@ -347,6 +331,139 @@ def _tables_to_zip_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
             zf.writestr(f"{name}.csv", df.to_csv(index=False))
     bio.seek(0)
     return bio.read()
+
+_SQL_BLOCKLIST = re.compile(
+    r"\b(drop|truncate|alter|create|grant|revoke|comment|vacuum|analyze|insert|update|delete|merge)\b",
+    re.IGNORECASE
+)
+
+def _is_sql_safe_readonly(sql: str) -> tuple[bool, str]:
+    if not sql or not sql.strip():
+        return False, "Empty SQL"
+    s = sql.strip().strip(";").strip()
+    if not (re.match(r"^(with\b[\s\S]+?\bselect\b|select\b)", s, flags=re.IGNORECASE)):
+        return False, "Only SELECT (or WITH ... SELECT) is allowed"
+    if _SQL_BLOCKLIST.search(s):
+        return False, "Only read-only queries are allowed"
+    if ";" in s:
+        return False, "Multiple statements are not allowed"
+    return True, "OK"
+
+def _schema_text_for_prompt(schema: dict) -> str:
+    if not schema:
+        return "Schema is empty."
+
+    tables = (schema.get("tables") or {})
+    lines = []
+    for tname, tmeta in tables.items():
+        cols = (tmeta.get("columns") or {})
+        pk = tmeta.get("primary_key") or []
+        fks = tmeta.get("foreign_keys") or []
+        lines.append(f"TABLE {tname}:")
+        for cname, cinfo in cols.items():
+            ctype = cinfo.get("type_pg") or cinfo.get("type") or cinfo.get("type_raw") or "UNKNOWN"
+            nn = "" if cinfo.get("nullable", True) else " NOT NULL"
+            lines.append(f"  - {cname}: {ctype}{nn}")
+        if pk:
+            lines.append(f"  PK: ({', '.join(pk)})")
+        for fk in fks:
+            ccols = fk.get("columns") or []
+            rt = fk.get("ref_table")
+            rcols = fk.get("ref_columns") or []
+            if ccols and rt:
+                if rcols:
+                    lines.append(f"  FK: ({', '.join(ccols)}) -> {rt}({', '.join(rcols)})")
+                else:
+                    lines.append(f"  FK: ({', '.join(ccols)}) -> {rt}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+def _sql_gen_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "sql": {"type": "string"},
+            "explanation": {"type": "string"},
+            "result_kind": {"type": "string", "enum": ["table", "scalar", "empty"]},
+            "chart": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["none", "bar", "line"]},
+                    "x": {"type": "string"},
+                    "y": {"type": "string"},
+                    "title": {"type": "string"},
+                },
+                "required": ["type"],
+                "additionalProperties": False,
+            },
+        },
+        "required": ["sql", "explanation", "result_kind", "chart"],
+        "additionalProperties": False,
+    }
+
+def _build_nl2sql_prompt(question: str, schema_text: str) -> str:
+    return f"""
+You are a data analyst. Convert the user's natural-language question into a single PostgreSQL SELECT query.
+
+Rules:
+- Output MUST be valid PostgreSQL.
+- Only SELECT or WITH ... SELECT is allowed. No INSERT/UPDATE/DELETE/DDL.
+- Use double quotes for identifiers ONLY if needed; otherwise prefer unquoted lowercase identifiers.
+- If user asks for "top", use ORDER BY + LIMIT.
+- If multiple tables needed, use correct JOINs based on schema.
+- If dates: be explicit and use proper casts if needed.
+- Prefer simple, readable SQL.
+
+Database schema:
+{schema_text}
+
+User question:
+{question}
+
+Return JSON with:
+- sql: string
+- explanation: short explanation
+- result_kind: "table"|"scalar"|"empty"
+- chart: object with "type": "none"|"bar"|"line" and optional x/y/title (only if it makes sense).
+""".strip()
+
+def _run_sql_to_df(sql: str) -> pd.DataFrame:
+    pg: PostgresClient = st.session_state.pg
+    with pg.connect() as conn:
+        return pd.read_sql_query(sql, conn)
+
+def _maybe_render_chart(df: pd.DataFrame, chart_spec: dict):
+    if df is None or df.empty:
+        return
+    if not chart_spec or chart_spec.get("type") in (None, "", "none"):
+        return
+
+    ctype = chart_spec.get("type")
+    x = chart_spec.get("x")
+    y = chart_spec.get("y")
+    title = chart_spec.get("title") or ""
+
+    if ctype not in ("bar", "line"):
+        return
+    if not x or not y:
+        return
+    if x not in df.columns or y not in df.columns:
+        return
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    if ctype == "bar":
+        ax.bar(df[x].astype(str), df[y])
+    elif ctype == "line":
+        ax.plot(df[x], df[y])
+
+    if title:
+        ax.set_title(title)
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
+
+    st.pyplot(fig)
 
 if page == "Data Generation":
     st.markdown("###")
@@ -696,25 +813,14 @@ if page == "Data Generation":
 else:
     st.subheader("Talk to your data")
 
-    saved_ids = list(st.session_state.datasets.keys())
-    options = ["(current session)"] + saved_ids
-    dataset = st.selectbox("Dataset", options=options, index=0)
+    if not st.session_state.schema:
+        st.warning("Schema is not loaded yet. Go to 'Data Generation', upload DDL and generate/load dataset first.")
+        st.stop()
 
-    if dataset == "(current session)":
-        tables_for_view = st.session_state.tables
-        st.caption("Using tables from current session_state.")
-    else:
-        meta = st.session_state.datasets.get(dataset, {})
-        st.caption(f"Dataset path: {meta.get('path')}")
-        st.caption(f"Tables: {', '.join(meta.get('tables', []))}")
-        tables_for_view = st.session_state.tables
+    schema_text = _schema_text_for_prompt(st.session_state.schema)
 
-    st.markdown("### Tables preview")
-    if not tables_for_view:
-        st.info("No tables available yet.")
-    else:
-        tname = st.selectbox("Table", options=list(tables_for_view.keys()))
-        st.dataframe(tables_for_view[tname], use_container_width=True, hide_index=True)
+    with st.expander("Schema (for reference)", expanded=False):
+        st.code(schema_text)
 
     st.markdown("###")
     question = st.text_area(
@@ -723,10 +829,82 @@ else:
         height=120,
     )
 
-    run = st.button("Run query", type="primary")
+    col_run, col_opts = st.columns([1, 3], vertical_alignment="center")
+    with col_opts:
+        show_sql = st.checkbox("Show generated SQL", value=True)
+        show_expl = st.checkbox("Show explanation", value=True)
 
-    if run:
-        st.info("Next step: Gemini → SQL generation → execute in PostgreSQL → show text/table/plot result.")
+    run = col_run.button("Run query", type="primary")
 
     st.markdown("### Result")
-    st.write("Result output will appear here (text, table, or chart).")
+
+    if run:
+        if not question.strip():
+            st.warning("Please enter a question first.")
+            st.stop()
+
+        vertex = VertexGenAIClient(
+            project=DEFAULT_VERTEX_PROJECT,
+            location=DEFAULT_VERTEX_LOCATION,
+            model=DEFAULT_VERTEX_MODEL,
+        )
+
+        started_at = time.time()
+        with st.status("Generating SQL via Gemini…", expanded=True) as sctx:
+            line = sctx.empty()
+            line.info("Building prompt…")
+
+            prompt = _build_nl2sql_prompt(question=question.strip(), schema_text=schema_text)
+            resp_schema = _sql_gen_schema()
+
+            line.info("Requesting structured JSON…")
+            out = vertex.generate_json(
+                prompt=prompt,
+                response_schema=resp_schema,
+                temperature=0.0,
+                max_output_tokens=1024,
+                repair_attempts=1,
+                token_expand_attempts=1,
+                max_output_tokens_cap=2048,
+            )
+
+            sql = (out or {}).get("sql") or ""
+            explanation = (out or {}).get("explanation") or ""
+            chart_spec = (out or {}).get("chart") or {"type": "none"}
+
+            ok, why = _is_sql_safe_readonly(sql)
+            if not ok:
+                sctx.update(label="SQL rejected ❌", state="error", expanded=True)
+                st.error(f"Generated SQL was rejected: {why}")
+                if show_sql and sql:
+                    st.code(sql, language="sql")
+                st.stop()
+
+            sctx.update(label="SQL generated ✅", state="complete", expanded=False)
+
+        if show_sql:
+            st.subheader("SQL")
+            st.code(sql.strip(), language="sql")
+        if show_expl and explanation.strip():
+            st.caption(explanation.strip())
+
+        with st.status("Executing SQL in PostgreSQL…", expanded=True) as ectx:
+            eline = ectx.empty()
+            try:
+                eline.info("Running query…")
+                dfq = _run_sql_to_df(sql)
+                ectx.update(label=f"Query completed ✅ ({_format_elapsed(time.time() - started_at)})", state="complete", expanded=False)
+            except Exception as e:
+                ectx.update(label="Query failed ❌", state="error", expanded=True)
+                st.error(f"PostgreSQL error: {e}")
+                st.stop()
+
+        if dfq is None or dfq.empty:
+            st.info("No rows returned.")
+        else:
+            st.dataframe(dfq, use_container_width=True, hide_index=True)
+
+        try:
+            _maybe_render_chart(dfq, chart_spec)
+        except Exception as e:
+            st.caption(f"Chart skipped: {e}")
