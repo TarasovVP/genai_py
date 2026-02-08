@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,CityEmployee consistently exceeds expectations.,Improve public speaking skills.,Draft
+2,2,3,2023-02-20,3,CityEmployee meets expectations. Needs improvement in time management.,Complete project management certification.,Draft
+3,3,4,2023-03-10,5,CityEmployee is a valuable asset to the team.,Mentor junior team members.,Draft
+4,4,5,2023-04-05,2,CityEmployee needs significant improvement in communication skills.,Attend communication skills workshop.,Draft
+5,5,6,2023-05-12,4,CityEmployee demonstrates strong leadership potential.,Lead a cross-functional project.,Draft
+6,6,7,2023-06-18,3,CityEmployee is a reliable team member.,Improve technical skills in Python.,Draft
+7,7,8,2023-07-22,5,CityEmployee consistently delivers high-quality work.,Present at an industry conference.,Draft
+8,8,9,2023-08-28,2,CityEmployee needs to improve attention to detail.,Complete a quality assurance training course.,Draft
+9,9,10,2023-09-15,4,CityEmployee is proactive and takes initiative.,Lead a process improvement initiative.,Draft
+10,10,1,2023-10-20,3,CityEmployee is a good team player.,Improve skills in data analysis.,Draft

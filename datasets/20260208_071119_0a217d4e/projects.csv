@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,City Project Phoenix,City Develop a new mobile application for internal use.,2023-01-15,2023-06-30,1,Completed,50000.0
+2,City Data Migration,City Migrate legacy data to a new database system.,2023-03-01,2023-09-30,2,In Progress,75000.5
+3,City Website Redesign,City Redesign the company's public website for better user experience.,2023-05-10,2023-11-15,3,Planning,40000.0
+4,City Security Audit,City Conduct a comprehensive security audit of the IT infrastructure.,2023-07-01,2023-08-15,4,Completed,25000.0
+5,City New Product Launch,City Prepare for the launch of a new product line.,2023-09-01,2024-03-31,5,Planning,120000.0
+6,City Employee Training Program,City Develop and implement a new employee training program.,2023-11-01,2024-02-29,6,In Progress,30000.0
+7,City Office Expansion,City Plan and execute an expansion of the office space.,2024-01-01,2024-06-30,7,Planning,200000.0
+8,City CRM Implementation,City Implement a new CRM system to improve customer relationship management.,2024-03-01,2024-09-30,8,Planning,90000.0
+9,City Marketing Campaign,City Launch a new marketing campaign to increase brand awareness.,2024-05-01,2024-07-31,9,Planning,60000.0
+10,City Server Upgrade,City Upgrade the company's servers to improve performance and reliability.,2024-07-01,2024-08-31,10,Planning,45000.0

@@ -1,0 +1,11 @@
+company_id,name,address,city,state,zip_code,phone_number,industry,website
+1,Acme Corp,123 Main St,"substring(city, 6)",CA,91234,555-123-4567,Technology,www.acme.com
+2,Beta Industries,456 Oak Ave,"substring(city, 6)",IL,62704,309-765-4321,Manufacturing,www.betaind.net
+3,Gamma Solutions,789 Pine Ln,"substring(city, 6)",GA,30303,404-555-7890,Consulting,www.gamma.org
+4,Delta Systems,101 Elm St,"substring(city, 6)",KS,66601,785-111-2222,Software,www.deltasys.com
+5,Epsilon Group,222 Maple Dr,"substring(city, 6)",NY,10001,212-333-4444,Finance,www.epsilongrp.com
+6,Zeta Corp,333 Cherry Rd,"substring(city, 6)",NJ,07001,973-444-5555,Healthcare,www.zetacorp.net
+7,Eta Industries,444 Oakwood Ave,"substring(city, 6)",TX,75001,214-555-6666,Retail,www.etaind.com
+8,Theta Solutions,555 Pinecrest Ln,"substring(city, 6)",WA,98001,425-666-7777,Aerospace,www.thetasol.org
+9,Iota Systems,666 Willow St,"substring(city, 6)",FL,33101,305-777-8888,Energy,www.iotasys.com
+10,Kappa Group,777 Birch Dr,"substring(city, 6)",PA,19101,215-888-9999,Education,www.kappagrp.com
