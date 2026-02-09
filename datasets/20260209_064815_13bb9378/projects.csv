@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Revamping the customer service portal.,2023-01-15,2023-06-30,1,Completed,150000.0
+2,Operation Blue Sky,Developing a new mobile application for iOS and Android.,2023-03-01,2023-12-31,2,In Progress,250000.0
+3,Project Nightingale,Implementing a new electronic health records system.,2022-11-01,2023-05-15,3,Completed,300000.0
+4,Project Titan,Building a new data warehouse for business intelligence.,2023-02-15,2024-01-31,4,In Progress,400000.0
+5,Project Golden Gate,Upgrading the network infrastructure.,2023-04-01,2023-09-30,5,In Progress,100000.0
+6,Project Everest,Developing a new cloud-based platform.,2022-09-01,2023-03-31,6,Completed,500000.0
+7,Project Rainbow,Creating a new marketing campaign.,2023-05-01,2023-08-31,7,In Progress,75000.0
+8,Project Apollo,Research and development of a new product line.,2023-06-15,2024-06-15,8,Planning,600000.0
+9,Project Chimera,Migrating legacy systems to a modern architecture.,2022-12-01,2023-07-31,9,Completed,200000.0
+10,Project Starlight,Improving employee onboarding process.,2023-07-01,2023-12-31,10,Planning,50000.0
