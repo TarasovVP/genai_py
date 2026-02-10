@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Revamping the customer service platform.,2023-01-15,2023-12-31,1,Completed,500000.0
+2,Operation Nightingale,Developing a new AI-powered diagnostic tool.,2023-03-01,2024-06-30,2,In Progress,750000.0
+3,Project Chimera,Integrating blockchain technology into supply chain management.,2022-11-10,2023-05-15,3,Completed,300000.0
+4,Project Cerberus,Enhancing cybersecurity infrastructure.,2023-07-01,2024-03-31,4,In Progress,600000.0
+5,Project Atlas,Expanding into the Asian market.,2022-09-01,2023-03-31,5,Completed,400000.0
+6,Project Voyager,Developing a mobile app for remote healthcare.,2023-04-15,2024-01-31,6,In Progress,800000.0
+7,Project Aurora,Implementing a new ERP system.,2023-02-01,2023-10-31,7,Completed,550000.0
+8,Project Titan,Upgrading data center infrastructure.,2023-08-01,2024-05-31,8,In Progress,900000.0
+9,Project Gemini,Creating a new marketing campaign.,2022-12-01,2023-06-30,9,Completed,250000.0
+10,Project Apollo,Researching and developing sustainable energy solutions.,2023-05-01,2024-02-29,10,In Progress,700000.0

@@ -4,7 +4,6 @@ import json
 import random
 import inspect
 import time
-
 import os
 import re
 from pathlib import Path
@@ -13,7 +12,12 @@ from uuid import uuid4
 from io import BytesIO
 import zipfile
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+    _HAS_MPL = True
+except Exception:
+    plt = None
+    _HAS_MPL = False
 
 from ddl_parser import parse_ddl_to_schema
 from vertex_client import VertexGenAIClient
@@ -23,7 +27,6 @@ from data_editor import (
     build_prompt_for_table_patch,
     apply_patch_to_df,
 )
-
 from postgres_client import PostgresClient, PostgresConfig
 
 DEFAULT_ROWS_PER_TABLE = 10
@@ -317,7 +320,6 @@ def _save_dataset_to_disk(
             "dataset_prompt": dataset_prompt or "",
         },
     )
-
     for tname, tdf in (tables or {}).items():
         _save_table_csv(dataset_id, tname, tdf)
 
@@ -352,7 +354,6 @@ def _is_sql_safe_readonly(sql: str) -> tuple[bool, str]:
 def _schema_text_for_prompt(schema: dict) -> str:
     if not schema:
         return "Schema is empty."
-
     tables = (schema.get("tables") or {})
     lines = []
     for tname, tmeta in tables.items():
@@ -388,10 +389,11 @@ def _sql_gen_schema() -> dict:
             "chart": {
                 "type": "object",
                 "properties": {
-                    "type": {"type": "string", "enum": ["none", "bar", "line"]},
+                    "type": {"type": "string", "enum": ["none", "bar", "line", "hist"]},
                     "x": {"type": "string"},
                     "y": {"type": "string"},
                     "title": {"type": "string"},
+                    "bins": {"type": "integer"},
                 },
                 "required": ["type"],
                 "additionalProperties": False,
@@ -408,11 +410,16 @@ You are a data analyst. Convert the user's natural-language question into a sing
 Rules:
 - Output MUST be valid PostgreSQL.
 - Only SELECT or WITH ... SELECT is allowed. No INSERT/UPDATE/DELETE/DDL.
+- Do not use functions that require unusual extensions. Prefer standard PostgreSQL functions.
+- Use explicit casts when needed (e.g., ::numeric, ::int).
 - Use double quotes for identifiers ONLY if needed; otherwise prefer unquoted lowercase identifiers.
 - If user asks for "top", use ORDER BY + LIMIT.
 - If multiple tables needed, use correct JOINs based on schema.
-- If dates: be explicit and use proper casts if needed.
 - Prefer simple, readable SQL.
+
+If the user asks for a chart:
+- For line/bar: return aggregated results with columns that match chart.x and chart.y.
+- For histogram: prefer returning the raw numeric column (one row per entity) and set chart.type="hist" and chart.y to that column name; include chart.bins if user specifies.
 
 Database schema:
 {schema_text}
@@ -424,13 +431,105 @@ Return JSON with:
 - sql: string
 - explanation: short explanation
 - result_kind: "table"|"scalar"|"empty"
-- chart: object with "type": "none"|"bar"|"line" and optional x/y/title (only if it makes sense).
+- chart: object with "type": "none"|"bar"|"line"|"hist" and optional x/y/title/bins (only if it makes sense).
 """.strip()
 
 def _run_sql_to_df(sql: str) -> pd.DataFrame:
     pg: PostgresClient = st.session_state.pg
     with pg.connect() as conn:
         return pd.read_sql_query(sql, conn)
+
+def _build_sql_repair_prompt(
+    question: str,
+    schema_text: str,
+    bad_sql: str,
+    error_text: str,
+    attempt: int,
+) -> str:
+    return f"""
+You previously generated a PostgreSQL query, but it failed at execution time.
+
+User question:
+{question}
+
+Database schema:
+{schema_text}
+
+Failed SQL:
+{bad_sql}
+
+PostgreSQL error:
+{error_text}
+
+Fix the SQL so it runs successfully and still answers the user's question.
+
+Rules:
+- Output MUST be valid PostgreSQL.
+- Only SELECT or WITH ... SELECT is allowed. No INSERT/UPDATE/DELETE/DDL.
+- Single statement only.
+- Use explicit casts if needed.
+- Prefer standard PostgreSQL functions.
+- Keep it simple and correct.
+
+Return JSON with:
+- sql: string
+- explanation: short explanation of what you changed
+- result_kind: "table"|"scalar"|"empty"
+- chart: object with "type": "none"|"bar"|"line"|"hist" and optional x/y/title/bins
+Attempt: {attempt}
+""".strip()
+
+def _execute_sql_with_repairs(
+    vertex: VertexGenAIClient,
+    question: str,
+    schema_text: str,
+    initial_out: dict,
+    max_repairs: int,
+) -> tuple[pd.DataFrame, dict, list[dict]]:
+    repairs: list[dict] = []
+    out = dict(initial_out or {})
+    resp_schema = _sql_gen_schema()
+
+    for attempt in range(0, max_repairs + 1):
+        sql = (out.get("sql") or "").strip()
+        ok, why = _is_sql_safe_readonly(sql)
+        if not ok:
+            raise RuntimeError(f"Generated SQL was rejected: {why}")
+
+        try:
+            df = _run_sql_to_df(sql)
+            return df, out, repairs
+        except Exception as e:
+            if attempt >= max_repairs:
+                raise
+            error_text = str(e)
+            prompt = _build_sql_repair_prompt(
+                question=question,
+                schema_text=schema_text,
+                bad_sql=sql,
+                error_text=error_text,
+                attempt=attempt + 1,
+            )
+            out2 = vertex.generate_json(
+                prompt=prompt,
+                response_schema=resp_schema,
+                temperature=0.0,
+                max_output_tokens=1024,
+                repair_attempts=1,
+                token_expand_attempts=1,
+                max_output_tokens_cap=2048,
+            )
+            repairs.append(
+                {
+                    "attempt": attempt + 1,
+                    "prev_sql": sql,
+                    "error": error_text,
+                    "new_sql": (out2 or {}).get("sql") or "",
+                }
+            )
+            out = dict(out2 or {})
+
+    raise RuntimeError("Unexpected control flow in _execute_sql_with_repairs")
 
 def _maybe_render_chart(df: pd.DataFrame, chart_spec: dict):
     if df is None or df.empty:
@@ -442,28 +541,61 @@ def _maybe_render_chart(df: pd.DataFrame, chart_spec: dict):
     x = chart_spec.get("x")
     y = chart_spec.get("y")
     title = chart_spec.get("title") or ""
+    bins = chart_spec.get("bins")
 
-    if ctype not in ("bar", "line"):
-        return
-    if not x or not y:
-        return
-    if x not in df.columns or y not in df.columns:
+    if ctype not in ("bar", "line", "hist"):
         return
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    if ctype in ("bar", "line"):
+        if not x or not y:
+            return
+        if x not in df.columns or y not in df.columns:
+            return
 
-    if ctype == "bar":
-        ax.bar(df[x].astype(str), df[y])
-    elif ctype == "line":
-        ax.plot(df[x], df[y])
+        if _HAS_MPL:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            if ctype == "bar":
+                ax.bar(df[x].astype(str), df[y])
+            else:
+                ax.plot(df[x], df[y])
+            if title:
+                ax.set_title(title)
+            ax.set_xlabel(x)
+            ax.set_ylabel(y)
+            st.pyplot(fig)
+        else:
+            try:
+                series = df.set_index(df[x].astype(str))[y]
+                if ctype == "bar":
+                    st.bar_chart(series)
+                else:
+                    st.line_chart(series)
+            except Exception:
+                st.info("Chart rendering is unavailable (matplotlib is not installed).")
+        return
 
-    if title:
-        ax.set_title(title)
-    ax.set_xlabel(x)
-    ax.set_ylabel(y)
+    if ctype == "hist":
+        if not y or y not in df.columns:
+            return
+        series = pd.to_numeric(df[y], errors="coerce").dropna()
+        if series.empty:
+            return
 
-    st.pyplot(fig)
+        if _HAS_MPL:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            if isinstance(bins, int) and bins > 0:
+                ax.hist(series, bins=bins)
+            else:
+                ax.hist(series)
+            if title:
+                ax.set_title(title)
+            ax.set_xlabel(y)
+            ax.set_ylabel("count")
+            st.pyplot(fig)
+        else:
+            st.info("Histogram rendering is unavailable (matplotlib is not installed).")
 
 if page == "Data Generation":
     st.markdown("###")
@@ -513,7 +645,6 @@ if page == "Data Generation":
             try:
                 schema = parse_ddl_to_schema(ddl_for_pg)
                 st.session_state.schema = schema
-
                 st.success("DDL parsed → schema JSON is ready.")
                 with st.expander("Show parsed schema (JSON)"):
                     st.code(json.dumps(schema, ensure_ascii=False, indent=2), language="json")
@@ -831,8 +962,10 @@ else:
 
     col_run, col_opts = st.columns([1, 3], vertical_alignment="center")
     with col_opts:
-        show_sql = st.checkbox("Show generated SQL", value=True)
+        show_sql = st.checkbox("Show SQL", value=True)
         show_expl = st.checkbox("Show explanation", value=True)
+        allow_repairs = st.checkbox("Auto-repair SQL on error", value=True)
+        max_repairs = st.selectbox("Max repairs", options=[0, 1, 2, 3], index=2, disabled=not allow_repairs)
 
     run = col_run.button("Run query", type="primary")
 
@@ -868,36 +1001,56 @@ else:
                 max_output_tokens_cap=2048,
             )
 
-            sql = (out or {}).get("sql") or ""
-            explanation = (out or {}).get("explanation") or ""
-            chart_spec = (out or {}).get("chart") or {"type": "none"}
-
-            ok, why = _is_sql_safe_readonly(sql)
-            if not ok:
-                sctx.update(label="SQL rejected ❌", state="error", expanded=True)
-                st.error(f"Generated SQL was rejected: {why}")
-                if show_sql and sql:
-                    st.code(sql, language="sql")
-                st.stop()
-
             sctx.update(label="SQL generated ✅", state="complete", expanded=False)
 
-        if show_sql:
-            st.subheader("SQL")
-            st.code(sql.strip(), language="sql")
-        if show_expl and explanation.strip():
-            st.caption(explanation.strip())
-
+        repairs = []
         with st.status("Executing SQL in PostgreSQL…", expanded=True) as ectx:
             eline = ectx.empty()
             try:
                 eline.info("Running query…")
-                dfq = _run_sql_to_df(sql)
-                ectx.update(label=f"Query completed ✅ ({_format_elapsed(time.time() - started_at)})", state="complete", expanded=False)
+                dfq, final_out, repairs = _execute_sql_with_repairs(
+                    vertex=vertex,
+                    question=question.strip(),
+                    schema_text=schema_text,
+                    initial_out=out,
+                    max_repairs=int(max_repairs) if allow_repairs else 0,
+                )
+                ectx.update(
+                    label=f"Query completed ✅ ({_format_elapsed(time.time() - started_at)})",
+                    state="complete",
+                    expanded=False,
+                )
             except Exception as e:
                 ectx.update(label="Query failed ❌", state="error", expanded=True)
                 st.error(f"PostgreSQL error: {e}")
+                if show_sql:
+                    sql_bad = ((out or {}).get("sql") or "").strip()
+                    if sql_bad:
+                        st.subheader("SQL")
+                        st.code(sql_bad, language="sql")
                 st.stop()
+
+        sql = (final_out or {}).get("sql") or ""
+        explanation = (final_out or {}).get("explanation") or ""
+        chart_spec = (final_out or {}).get("chart") or {"type": "none"}
+
+        ok, why = _is_sql_safe_readonly(sql)
+        if not ok:
+            st.error(f"Generated SQL was rejected: {why}")
+            if show_sql and sql:
+                st.code(sql, language="sql")
+            st.stop()
+
+        if show_sql:
+            st.subheader("SQL")
+            st.code(sql.strip(), language="sql")
+
+        if show_expl and explanation.strip():
+            st.caption(explanation.strip())
+
+        if repairs:
+            with st.expander(f"Repairs applied ({len(repairs)})", expanded=False):
+                st.json(repairs)
 
         if dfq is None or dfq.empty:
             st.info("No rows returned.")
