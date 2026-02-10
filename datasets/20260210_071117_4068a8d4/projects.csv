@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Develop a new marketing strategy.,2023-01-15,2023-06-30,1,Completed,50000.0
+2,Operation Breakthrough,Implement a new CRM system.,2023-03-01,2023-09-30,2,In Progress,75000.5
+3,Project Starlight,Research and develop a new product line.,2023-05-01,2024-02-29,3,Planning,120000.0
+4,Project Nova,Upgrade the existing IT infrastructure.,2023-07-01,2023-12-31,4,Completed,60000.0
+5,Project Gemini,Expand into a new international market.,2023-09-01,2024-06-30,5,In Progress,150000.75
+6,Project Apollo,Develop a mobile application.,2023-11-01,2024-05-31,6,Planning,90000.0
+7,Project Orion,Improve customer satisfaction through surveys and feedback analysis.,2024-01-01,2024-07-31,7,In Progress,45000.0
+8,Project Comet,Reduce operational costs by streamlining processes.,2024-03-01,2024-09-30,8,Planning,80000.0
+9,Project Nebula,Increase brand awareness through social media campaigns.,2023-02-15,2023-08-31,9,Completed,55000.0
+10,Project Galaxy,Implement a new security protocol.,2024-04-01,2024-10-31,10,Planning,100000.0

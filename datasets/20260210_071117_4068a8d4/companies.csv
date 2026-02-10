@@ -1,0 +1,11 @@
+company_id,name,address,city,state,zip_code,phone_number,industry,website
+1,Tech Solutions Inc.,123 Main St,Los Angeles,CA,90001,555-123-4567,Technology,www.techsolutions.com
+2,Global Enterprises,456 Oak Ave,Los Angeles,NY,10001,212-987-6543,Finance,www.globalenterprises.com
+3,Sunrise Healthcare,789 Pine Ln,Los Angeles,IL,60601,312-555-7890,Healthcare,www.sunrisehealth.org
+4,Citywide Retail,101 Elm St,Los Angeles,TX,77002,713-444-5555,Retail,www.citywideretail.com
+5,Mountain View Logistics,222 Cedar Rd,Los Angeles,CO,80202,303-222-3333,Logistics,www.mountainviewlogistics.com
+6,Ocean Breeze Resorts,333 Palm Dr,Los Angeles,FL,33130,305-111-2222,Hospitality,www.oceanbreezeresorts.com
+7,Golden State Manufacturing,444 Birch Ave,Los Angeles,CA,94102,415-777-8888,Manufacturing,www.goldenstatemfg.com
+8,Northwind Energy,555 Maple Ct,Los Angeles,WA,98101,206-333-4444,Energy,www.northwindenergy.com
+9,Southern Charm Restaurants,666 Cherry St,Los Angeles,GA,30303,404-555-6666,Food & Beverage,www.southerncharmrestaurants.com
+10,Prairie View Agriculture,777 Oak Ln,Los Angeles,MO,64106,816-222-7777,Agriculture,www.prairieviewag.com
