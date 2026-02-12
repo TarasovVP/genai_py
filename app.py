@@ -19,6 +19,13 @@ except Exception:
     plt = None
     _HAS_MPL = False
 
+try:
+    from langfuse import Langfuse
+    _HAS_LANGFUSE = True
+except Exception:
+    Langfuse = None
+    _HAS_LANGFUSE = False
+
 from ddl_parser import parse_ddl_to_schema
 from vertex_client import VertexGenAIClient
 from data_generator import generate_all_tables
@@ -46,6 +53,10 @@ DEFAULT_PG_PORT = int(os.getenv("PG_PORT", "55432"))
 DEFAULT_PG_DB = os.getenv("PG_DB", "data_assistant")
 DEFAULT_PG_USER = os.getenv("PG_USER", "data_assistant")
 DEFAULT_PG_PASSWORD = os.getenv("PG_PASSWORD", "data_assistant")
+
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
 if "tables" not in st.session_state:
     st.session_state.tables = {}
@@ -79,6 +90,21 @@ if "pg" not in st.session_state:
         )
     )
 
+if "langfuse" not in st.session_state:
+    st.session_state.langfuse = None
+    if _HAS_LANGFUSE and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+        try:
+            st.session_state.langfuse = Langfuse(
+                public_key=LANGFUSE_PUBLIC_KEY,
+                secret_key=LANGFUSE_SECRET_KEY,
+                host=LANGFUSE_HOST,
+            )
+        except Exception:
+            st.session_state.langfuse = None
+
+if "trace_id" not in st.session_state:
+    st.session_state.trace_id = None
+
 st.sidebar.title("Data Assistant")
 page = st.sidebar.radio(
     label="Navigation",
@@ -86,6 +112,191 @@ page = st.sidebar.radio(
     index=0,
     label_visibility="collapsed",
 )
+
+def _new_trace_id() -> str:
+    return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:10]
+
+def _ensure_trace(name: str, metadata: dict | None = None):
+    lf = st.session_state.langfuse
+    if lf is None:
+        return None
+
+    if not st.session_state.trace_id:
+        st.session_state.trace_id = _new_trace_id()
+
+    try:
+        return lf.trace(
+            id=st.session_state.trace_id,
+            name=name,
+            user_id="streamlit_user",
+            metadata=metadata or {},
+        )
+    except Exception:
+        return None
+
+def _safe_preview(obj, limit: int = 2000) -> str:
+    try:
+        s = json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        s = str(obj)
+    if len(s) > limit:
+        return s[:limit] + "…"
+    return s
+
+def _log_event(name: str, level: str, message: str, metadata: dict | None = None):
+    lf = st.session_state.langfuse
+    if lf is None:
+        return
+
+    tr = _ensure_trace(name="data_assistant", metadata={"page": page, "dataset_id": st.session_state.current_dataset_id})
+    if tr is None:
+        return
+
+    try:
+        lf.event(
+            trace_id=st.session_state.trace_id,
+            name=name,
+            level=level,
+            message=message,
+            metadata=metadata or {},
+        )
+    except Exception:
+        pass
+
+def _log_generation(
+    phase: str,
+    prompt: str,
+    response_schema: dict | None,
+    model: str,
+    temperature: float | None,
+    max_output_tokens: int | None,
+    start_ts: float,
+    end_ts: float,
+    output: dict | None,
+    error: str | None,
+    metadata: dict | None = None,
+):
+    lf = st.session_state.langfuse
+    if lf is None:
+        return
+
+    tr = _ensure_trace(
+        name="data_assistant",
+        metadata={
+            "page": page,
+            "phase": phase,
+            "dataset_id": st.session_state.current_dataset_id,
+        },
+    )
+    if tr is None:
+        return
+
+    meta = dict(metadata or {})
+    meta.update(
+        {
+            "phase": phase,
+            "model": model,
+            "temperature": temperature,
+            "max_output_tokens": max_output_tokens,
+            "response_schema_present": bool(response_schema),
+            "output_preview": _safe_preview(output, 1500) if output is not None else "",
+            "error": error or "",
+        }
+    )
+
+    try:
+        lf.generation(
+            trace_id=st.session_state.trace_id,
+            name=phase,
+            model=model,
+            input=prompt,
+            output=_safe_preview(output, 3000) if output is not None else "",
+            metadata=meta,
+            start_time=datetime.utcfromtimestamp(start_ts).isoformat(timespec="seconds") + "Z",
+            end_time=datetime.utcfromtimestamp(end_ts).isoformat(timespec="seconds") + "Z",
+        )
+    except Exception:
+        pass
+
+def _log_span(
+    name: str,
+    start_ts: float,
+    end_ts: float,
+    metadata: dict | None = None,
+    status: str = "ok",
+):
+    lf = st.session_state.langfuse
+    if lf is None:
+        return
+
+    tr = _ensure_trace(
+        name="data_assistant",
+        metadata={
+            "page": page,
+            "dataset_id": st.session_state.current_dataset_id,
+        },
+    )
+    if tr is None:
+        return
+
+    meta = dict(metadata or {})
+    meta["status"] = status
+
+    try:
+        lf.span(
+            trace_id=st.session_state.trace_id,
+            name=name,
+            start_time=datetime.utcfromtimestamp(start_ts).isoformat(timespec="seconds") + "Z",
+            end_time=datetime.utcfromtimestamp(end_ts).isoformat(timespec="seconds") + "Z",
+            metadata=meta,
+        )
+    except Exception:
+        pass
+
+def _vertex_generate_json_logged(
+    vertex: VertexGenAIClient,
+    phase: str,
+    prompt: str,
+    response_schema: dict,
+    temperature: float,
+    max_output_tokens: int,
+    repair_attempts: int,
+    token_expand_attempts: int,
+    max_output_tokens_cap: int,
+    metadata: dict | None = None,
+):
+    t0 = time.time()
+    err = None
+    out = None
+    try:
+        out = vertex.generate_json(
+            prompt=prompt,
+            response_schema=response_schema,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            repair_attempts=repair_attempts,
+            token_expand_attempts=token_expand_attempts,
+            max_output_tokens_cap=max_output_tokens_cap,
+        )
+        return out
+    except Exception as e:
+        err = str(e)
+        raise
+    finally:
+        t1 = time.time()
+        _log_generation(
+            phase=phase,
+            prompt=prompt,
+            response_schema=response_schema,
+            model=getattr(vertex, "model", None) or DEFAULT_VERTEX_MODEL,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            start_ts=t0,
+            end_ts=t1,
+            output=out if isinstance(out, dict) else {"output": out},
+            error=err,
+            metadata=metadata or {},
+        )
 
 _ENUM_COL_RE = re.compile(
     r"""
@@ -188,19 +399,60 @@ def _normalize_all_tables_to_allowed_values(tables: dict[str, pd.DataFrame]) -> 
     return fixed
 
 def _pg_full_reload(ddl_text: str, tables: dict[str, pd.DataFrame]) -> dict[str, int]:
-    pg: PostgresClient = st.session_state.pg
-    pg.reset_public_schema()
-    pg.apply_ddl(ddl_text)
-    inserted = pg.insert_tables(tables)
-    return inserted
+    t0 = time.time()
+    status = "ok"
+    err = None
+    try:
+        pg: PostgresClient = st.session_state.pg
+        pg.reset_public_schema()
+        pg.apply_ddl(ddl_text)
+        inserted = pg.insert_tables(tables)
+        return inserted
+    except Exception as e:
+        status = "error"
+        err = str(e)
+        raise
+    finally:
+        _log_span(
+            name="postgres_full_reload",
+            start_ts=t0,
+            end_ts=time.time(),
+            metadata={
+                "tables": list((tables or {}).keys()),
+                "ddl_chars": len(ddl_text or ""),
+                "error": err or "",
+            },
+            status=status,
+        )
 
 def _pg_reload_table(table_name: str, df: pd.DataFrame) -> int:
-    pg: PostgresClient = st.session_state.pg
-    with pg.connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE;')
-        conn.commit()
-    return pg.insert_df(table_name, df)
+    t0 = time.time()
+    status = "ok"
+    err = None
+    try:
+        pg: PostgresClient = st.session_state.pg
+        with pg.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE;')
+            conn.commit()
+        return pg.insert_df(table_name, df)
+    except Exception as e:
+        status = "error"
+        err = str(e)
+        raise
+    finally:
+        _log_span(
+            name="postgres_reload_table",
+            start_ts=t0,
+            end_ts=time.time(),
+            metadata={
+                "table": table_name,
+                "rows": int(len(df)) if df is not None else 0,
+                "cols": int(len(df.columns)) if df is not None else 0,
+                "error": err or "",
+            },
+            status=status,
+        )
 
 def seed_demo_tables():
     st.session_state.tables = {
@@ -336,7 +588,7 @@ def _tables_to_zip_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
 
 _SQL_BLOCKLIST = re.compile(
     r"\b(drop|truncate|alter|create|grant|revoke|comment|vacuum|analyze|insert|update|delete|merge)\b",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 def _is_sql_safe_readonly(sql: str) -> tuple[bool, str]:
@@ -435,9 +687,29 @@ Return JSON with:
 """.strip()
 
 def _run_sql_to_df(sql: str) -> pd.DataFrame:
-    pg: PostgresClient = st.session_state.pg
-    with pg.connect() as conn:
-        return pd.read_sql_query(sql, conn)
+    t0 = time.time()
+    status = "ok"
+    err = None
+    try:
+        pg: PostgresClient = st.session_state.pg
+        with pg.connect() as conn:
+            df = pd.read_sql_query(sql, conn)
+        return df
+    except Exception as e:
+        status = "error"
+        err = str(e)
+        raise
+    finally:
+        _log_span(
+            name="postgres_select_query",
+            start_ts=t0,
+            end_ts=time.time(),
+            metadata={
+                "sql": (sql or "")[:5000],
+                "error": err or "",
+            },
+            status=status,
+        )
 
 def _build_sql_repair_prompt(
     question: str,
@@ -510,7 +782,9 @@ def _execute_sql_with_repairs(
                 error_text=error_text,
                 attempt=attempt + 1,
             )
-            out2 = vertex.generate_json(
+            out2 = _vertex_generate_json_logged(
+                vertex=vertex,
+                phase="sql_repair",
                 prompt=prompt,
                 response_schema=resp_schema,
                 temperature=0.0,
@@ -518,6 +792,11 @@ def _execute_sql_with_repairs(
                 repair_attempts=1,
                 token_expand_attempts=1,
                 max_output_tokens_cap=2048,
+                metadata={
+                    "attempt": attempt + 1,
+                    "prev_sql": sql[:5000],
+                    "pg_error": error_text[:5000],
+                },
             )
             repairs.append(
                 {
@@ -630,6 +909,7 @@ if page == "Data Generation":
 
     if generate_clicked:
         st.session_state.last_error = None
+        st.session_state.trace_id = _new_trace_id()
 
         progress = None
         status_ctx = None
@@ -650,6 +930,7 @@ if page == "Data Generation":
                     st.code(json.dumps(schema, ensure_ascii=False, indent=2), language="json")
             except Exception as e:
                 st.error(f"Failed to parse DDL: {e}")
+                _log_event("ddl_parse_error", "ERROR", "DDL parsing failed", {"error": str(e)})
                 st.stop()
 
             st.success("DDL schema uploaded.")
@@ -690,26 +971,48 @@ if page == "Data Generation":
                         elapsed = _format_elapsed(time.time() - started_at)
                         status_line.info(f"Generating: {shown_done}/{shown_total} — {table_label} | ⏱ {elapsed}")
 
-                    if _supports_on_progress(generate_all_tables):
-                        dfs = generate_all_tables(
-                            vertex=vertex,
-                            ddl_schema=schema,
-                            rows_per_table=rows_per_table,
-                            temperature=float(temperature),
-                            max_output_tokens=int(max_tokens),
-                            dataset_prompt=str(dataset_prompt or ""),
-                            on_progress=on_progress,
-                        )
-                    else:
-                        elapsed = _format_elapsed(time.time() - started_at)
-                        status_line.info(f"Generation in progress… | ⏱ {elapsed}")
-                        dfs = generate_all_tables(
-                            vertex=vertex,
-                            ddl_schema=schema,
-                            rows_per_table=rows_per_table,
-                            temperature=float(temperature),
-                            max_output_tokens=int(max_tokens),
-                            dataset_prompt=str(dataset_prompt or ""),
+                    t_span0 = time.time()
+                    span_status = "ok"
+                    span_err = None
+                    try:
+                        if _supports_on_progress(generate_all_tables):
+                            dfs = generate_all_tables(
+                                vertex=vertex,
+                                ddl_schema=schema,
+                                rows_per_table=rows_per_table,
+                                temperature=float(temperature),
+                                max_output_tokens=int(max_tokens),
+                                dataset_prompt=str(dataset_prompt or ""),
+                                on_progress=on_progress,
+                            )
+                        else:
+                            elapsed = _format_elapsed(time.time() - started_at)
+                            status_line.info(f"Generation in progress… | ⏱ {elapsed}")
+                            dfs = generate_all_tables(
+                                vertex=vertex,
+                                ddl_schema=schema,
+                                rows_per_table=rows_per_table,
+                                temperature=float(temperature),
+                                max_output_tokens=int(max_tokens),
+                                dataset_prompt=str(dataset_prompt or ""),
+                            )
+                    except Exception as e:
+                        span_status = "error"
+                        span_err = str(e)
+                        raise
+                    finally:
+                        _log_span(
+                            name="data_generation",
+                            start_ts=t_span0,
+                            end_ts=time.time(),
+                            metadata={
+                                "rows_per_table": rows_per_table,
+                                "temperature": float(temperature),
+                                "max_output_tokens": int(max_tokens),
+                                "dataset_prompt_chars": len(str(dataset_prompt or "")),
+                                "error": span_err or "",
+                            },
+                            status=span_status,
                         )
 
                     status_ctx.update(label="Generation completed ✅", state="complete", expanded=False)
@@ -850,6 +1153,8 @@ if page == "Data Generation":
             else:
                 vertex = None
                 try:
+                    st.session_state.trace_id = _new_trace_id()
+
                     vertex = VertexGenAIClient(
                         project=DEFAULT_VERTEX_PROJECT,
                         location=DEFAULT_VERTEX_LOCATION,
@@ -882,7 +1187,9 @@ if page == "Data Generation":
                         line = sctx.empty()
                         line.info("Requesting patch…")
 
-                        patch = vertex.generate_json(
+                        patch = _vertex_generate_json_logged(
+                            vertex=vertex,
+                            phase="table_edit",
                             prompt=patch_prompt,
                             response_schema=patch_schema,
                             temperature=0.2,
@@ -890,6 +1197,12 @@ if page == "Data Generation":
                             repair_attempts=1,
                             token_expand_attempts=2,
                             max_output_tokens_cap=8192,
+                            metadata={
+                                "table": selected_table,
+                                "user_instruction": edit_prompt[:2000],
+                                "sample_rows_count": len(sample_rows),
+                                "max_ops": DEFAULT_MAX_OPS,
+                            },
                         )
 
                         line.info("Applying patch to dataframe…")
@@ -976,6 +1289,8 @@ else:
             st.warning("Please enter a question first.")
             st.stop()
 
+        st.session_state.trace_id = _new_trace_id()
+
         vertex = VertexGenAIClient(
             project=DEFAULT_VERTEX_PROJECT,
             location=DEFAULT_VERTEX_LOCATION,
@@ -991,7 +1306,9 @@ else:
             resp_schema = _sql_gen_schema()
 
             line.info("Requesting structured JSON…")
-            out = vertex.generate_json(
+            out = _vertex_generate_json_logged(
+                vertex=vertex,
+                phase="nl2sql",
                 prompt=prompt,
                 response_schema=resp_schema,
                 temperature=0.0,
@@ -999,6 +1316,9 @@ else:
                 repair_attempts=1,
                 token_expand_attempts=1,
                 max_output_tokens_cap=2048,
+                metadata={
+                    "question": question.strip()[:2000],
+                },
             )
 
             sctx.update(label="SQL generated ✅", state="complete", expanded=False)
