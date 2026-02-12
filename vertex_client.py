@@ -21,6 +21,11 @@ class VertexGenAIClient:
         self.last_raw: str = ""
         self.last_finish_reason: str = ""
 
+    @property
+    def model(self) -> str:
+        """Expose the current model name (useful for logging/observability)."""
+        return self._model
+
     def generate_json(
         self,
         prompt: str,
