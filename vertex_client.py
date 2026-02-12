@@ -42,7 +42,8 @@ class VertexGenAIClient:
         last_raw = ""
         last_finish = ""
 
-        for _ in range(max(0, token_expand_attempts) + 1):
+        # First pass: try normal generation (with token expansion if looks truncated)
+        for _ in range(max(0, int(token_expand_attempts)) + 1):
             resp = self._call_vertex(
                 prompt=prompt,
                 response_schema=response_schema,
@@ -63,8 +64,8 @@ class VertexGenAIClient:
             if parsed is not None:
                 return parsed
 
-            if self._should_expand_tokens(raw, finish) and cur_tokens < max_output_tokens_cap:
-                cur_tokens = min(max_output_tokens_cap, cur_tokens * 2)
+            if self._should_expand_tokens(raw, finish) and cur_tokens < int(max_output_tokens_cap):
+                cur_tokens = min(int(max_output_tokens_cap), cur_tokens * 2)
                 cur_temp = min(cur_temp, 0.2)
                 continue
 
@@ -72,11 +73,12 @@ class VertexGenAIClient:
 
         bad_text = last_raw
 
-        for _ in range(max(0, repair_attempts)):
+        # Second pass: ask model to "repair" invalid JSON output
+        for _ in range(max(0, int(repair_attempts))):
             repair_prompt = self._build_repair_prompt(bad_text)
 
             cur_tokens = int(max_output_tokens)
-            for _ in range(max(0, token_expand_attempts) + 1):
+            for _ in range(max(0, int(token_expand_attempts)) + 1):
                 resp2 = self._call_vertex(
                     prompt=repair_prompt,
                     response_schema=response_schema,
@@ -94,13 +96,14 @@ class VertexGenAIClient:
                 if parsed2 is not None:
                     return parsed2
 
-                if self._should_expand_tokens(raw2, finish2) and cur_tokens < max_output_tokens_cap:
-                    cur_tokens = min(max_output_tokens_cap, cur_tokens * 2)
+                if self._should_expand_tokens(raw2, finish2) and cur_tokens < int(max_output_tokens_cap):
+                    cur_tokens = min(int(max_output_tokens_cap), cur_tokens * 2)
                     continue
 
                 bad_text = raw2
                 break
 
+        # If still not valid JSON
         raise RuntimeError(self._format_user_friendly_error(max_output_tokens))
 
     def _call_vertex(
@@ -157,12 +160,14 @@ class VertexGenAIClient:
         return str(fr)
 
     def _try_parse_json(self, text: str) -> Optional[Dict[str, Any]]:
+        # 1) direct JSON
         try:
             out = json.loads(text)
             return out if isinstance(out, dict) else None
-        except json.JSONDecodeError:
+        except Exception:
             pass
 
+        # 2) try extract json block from text
         extracted = _extract_json_block(text)
         if extracted is None:
             return None
@@ -170,7 +175,7 @@ class VertexGenAIClient:
         try:
             out2 = json.loads(extracted)
             return out2 if isinstance(out2, dict) else None
-        except json.JSONDecodeError:
+        except Exception:
             return None
 
     def _looks_truncated(self, text: str) -> bool:
@@ -255,6 +260,7 @@ Invalid output (truncated):
 
 
 def _extract_json_block(s: str) -> Optional[str]:
+    # remove markdown fences if present
     s = re.sub(r"```json\s*", "", s, flags=re.IGNORECASE)
     s = s.replace("```", "")
 
