@@ -11,6 +11,7 @@ from datetime import datetime
 from uuid import uuid4
 from io import BytesIO
 import zipfile
+from typing import Optional, Dict, List, Tuple, Any
 
 try:
     import matplotlib.pyplot as plt
@@ -116,7 +117,7 @@ page = st.sidebar.radio(
 def _new_trace_id() -> str:
     return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:10]
 
-def _ensure_trace(name: str, metadata: dict | None = None):
+def _ensure_trace(name: str, metadata: Optional[Dict[str, Any]] = None):
     lf = st.session_state.langfuse
     if lf is None:
         return None
@@ -143,7 +144,7 @@ def _safe_preview(obj, limit: int = 2000) -> str:
         return s[:limit] + "…"
     return s
 
-def _log_event(name: str, level: str, message: str, metadata: dict | None = None):
+def _log_event(name: str, level: str, message: str, metadata: Optional[Dict[str, Any]] = None):
     lf = st.session_state.langfuse
     if lf is None:
         return
@@ -166,15 +167,15 @@ def _log_event(name: str, level: str, message: str, metadata: dict | None = None
 def _log_generation(
     phase: str,
     prompt: str,
-    response_schema: dict | None,
+    response_schema: Optional[Dict[str, Any]],
     model: str,
-    temperature: float | None,
-    max_output_tokens: int | None,
+    temperature: Optional[float],
+    max_output_tokens: Optional[int],
     start_ts: float,
     end_ts: float,
-    output: dict | None,
-    error: str | None,
-    metadata: dict | None = None,
+    output: Optional[Dict[str, Any]],
+    error: Optional[str],
+    metadata: Optional[Dict[str, Any]] = None,
 ):
     lf = st.session_state.langfuse
     if lf is None:
@@ -222,7 +223,7 @@ def _log_span(
     name: str,
     start_ts: float,
     end_ts: float,
-    metadata: dict | None = None,
+    metadata: Optional[Dict[str, Any]] = None,
     status: str = "ok",
 ):
     lf = st.session_state.langfuse
@@ -257,13 +258,13 @@ def _vertex_generate_json_logged(
     vertex: VertexGenAIClient,
     phase: str,
     prompt: str,
-    response_schema: dict,
+    response_schema: Dict[str, Any],
     temperature: float,
     max_output_tokens: int,
     repair_attempts: int,
     token_expand_attempts: int,
     max_output_tokens_cap: int,
-    metadata: dict | None = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ):
     t0 = time.time()
     err = None
@@ -311,8 +312,8 @@ _ENUM_COL_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-def _split_enum_vals(vals_raw: str) -> list[str]:
-    vals = []
+def _split_enum_vals(vals_raw: str) -> List[str]:
+    vals: List[str] = []
     for m in re.finditer(r"'((?:[^'\\]|\\.)*)'\s*(?:,|$)", vals_raw.strip()):
         v = m.group(1)
         v = v.replace("\\'", "'")
@@ -351,7 +352,7 @@ def normalize_ddl_for_postgres(ddl: str) -> str:
     s = re.sub(r"\s+\n", "\n", s)
     return s
 
-def _schema_allowed_for_table(table_name: str) -> dict[str, list]:
+def _schema_allowed_for_table(table_name: str) -> Dict[str, List[Any]]:
     schema_tables = (st.session_state.schema or {}).get("tables", {}) or {}
     meta = schema_tables.get(table_name, {}) or {}
     allowed = meta.get("allowed_values") or {}
@@ -390,15 +391,15 @@ def _normalize_df_to_allowed_values(table_name: str, df: pd.DataFrame) -> pd.Dat
 
     return out
 
-def _normalize_all_tables_to_allowed_values(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+def _normalize_all_tables_to_allowed_values(tables: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
     if not tables:
         return tables
-    fixed: dict[str, pd.DataFrame] = {}
+    fixed: Dict[str, pd.DataFrame] = {}
     for tname, df in tables.items():
         fixed[tname] = _normalize_df_to_allowed_values(tname, df)
     return fixed
 
-def _pg_full_reload(ddl_text: str, tables: dict[str, pd.DataFrame]) -> dict[str, int]:
+def _pg_full_reload(ddl_text: str, tables: Dict[str, pd.DataFrame]) -> Dict[str, int]:
     t0 = time.time()
     status = "ok"
     err = None
@@ -499,11 +500,11 @@ def _get_schema_tables() -> dict:
 def _get_table_meta(table_name: str) -> dict:
     return _get_schema_tables().get(table_name, {}) or {}
 
-def _compute_fk_allowed_values_for_table(table_name: str) -> dict[str, list]:
+def _compute_fk_allowed_values_for_table(table_name: str) -> Dict[str, List[Any]]:
     schema_tables = _get_schema_tables()
     meta = schema_tables.get(table_name, {}) or {}
     fks = meta.get("foreign_keys") or []
-    allowed: dict[str, list] = {}
+    allowed: Dict[str, List[Any]] = {}
 
     for fk in fks:
         child_cols = fk.get("columns") or []
@@ -557,7 +558,7 @@ def _save_dataset_to_disk(
     dataset_id: str,
     ddl_text: str,
     schema: dict,
-    tables: dict[str, pd.DataFrame],
+    tables: Dict[str, pd.DataFrame],
     dataset_prompt: str,
 ):
     d = _dataset_dir(dataset_id)
@@ -578,7 +579,7 @@ def _save_dataset_to_disk(
 def _df_to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8")
 
-def _tables_to_zip_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
+def _tables_to_zip_bytes(tables: Dict[str, pd.DataFrame]) -> bytes:
     bio = BytesIO()
     with zipfile.ZipFile(bio, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, df in (tables or {}).items():
@@ -591,7 +592,7 @@ _SQL_BLOCKLIST = re.compile(
     re.IGNORECASE,
 )
 
-def _is_sql_safe_readonly(sql: str) -> tuple[bool, str]:
+def _is_sql_safe_readonly(sql: str) -> Tuple[bool, str]:
     if not sql or not sql.strip():
         return False, "Empty SQL"
     s = sql.strip().strip(";").strip()
@@ -757,8 +758,8 @@ def _execute_sql_with_repairs(
     schema_text: str,
     initial_out: dict,
     max_repairs: int,
-) -> tuple[pd.DataFrame, dict, list[dict]]:
-    repairs: list[dict] = []
+) -> Tuple[pd.DataFrame, dict, List[dict]]:
+    repairs: List[dict] = []
     out = dict(initial_out or {})
     resp_schema = _sql_gen_schema()
 
