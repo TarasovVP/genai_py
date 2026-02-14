@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Revamping the core infrastructure.,2023-01-15,2023-12-31,1,Completed,500000.0
+2,Data Migration,Migrating data to the new cloud platform.,2023-03-01,2023-09-30,2,Completed,250000.0
+3,Mobile App Development,Developing a new mobile application for iOS and Android.,2023-05-10,2024-02-28,3,In Progress,750000.0
+4,Website Redesign,Redesigning the company website with a modern look and feel.,2023-07-01,2023-11-30,4,Completed,150000.0
+5,Security Audit,Conducting a comprehensive security audit of the systems.,2023-09-15,2023-12-15,5,Completed,100000.0
+6,New Product Launch,Launching a new product line in the market.,2023-11-01,2024-05-31,6,In Progress,1000000.0
+7,Customer Support System Upgrade,Upgrading the customer support system to improve efficiency.,2024-01-01,2024-06-30,7,Planning,300000.0
+8,AI Integration,Integrating AI capabilities into existing products.,2024-02-15,2024-12-31,8,Planning,800000.0
+9,Marketing Campaign,Launching a new marketing campaign to increase brand awareness.,2024-04-01,2024-07-31,9,Planning,200000.0
+10,Infrastructure Upgrade,Upgrading the server infrastructure to improve performance.,2024-05-15,2024-10-31,10,Planning,400000.0

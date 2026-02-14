@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,"Excellent performance, consistently exceeds expectations.",Continue to develop leadership skills and mentor junior team members.,Draft
+2,2,3,2023-02-20,3,"Good performance, meets expectations. Needs improvement in communication.",Improve communication skills through workshops and active listening exercises.,Draft
+3,3,4,2023-03-25,5,"Outstanding performance, a valuable asset to the team.",Lead a major project and present findings to senior management.,Draft
+4,4,5,2023-04-30,2,Needs improvement in several areas. Requires close supervision.,Improve time management and prioritization skills.,Draft
+5,5,6,2023-05-05,4,"Strong performance, consistently delivers high-quality work.",Explore opportunities for cross-functional collaboration.,Draft
+6,6,7,2023-06-10,3,"Meets expectations, but could be more proactive.",Take initiative on new projects and seek out challenges.,Draft
+7,7,8,2023-07-15,5,"Exceptional performance, a role model for the team.",Mentor junior team members and contribute to knowledge sharing sessions.,Draft
+8,8,9,2023-08-20,2,"Performance is below expectations, requires significant improvement.","Develop a performance improvement plan with specific, measurable goals.",Draft
+9,9,10,2023-09-25,4,"Very good performance, consistently meets deadlines and delivers quality work.",Enhance technical skills through training and certifications.,Draft
+10,10,1,2023-10-30,3,"Satisfactory performance, meets expectations but has potential for growth.",Improve problem-solving skills and decision-making abilities.,Draft
