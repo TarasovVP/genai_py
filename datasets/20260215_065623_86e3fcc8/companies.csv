@@ -1,0 +1,11 @@
+company_id,name,address,city,state,zip_code,phone_number,industry,website
+1,Tech Solutions Inc.,123 Main St,cityLos Angeles,CA,90001,555-123-4567,Information Technology,www.techsolutions.com
+2,Global Manufacturing Co.,456 Industrial Blvd,cityChicago,IL,60601,555-222-3333,Manufacturing,www.globalmfg.com
+3,Sunrise Retail Group,789 Commerce Ave,cityNew York,NY,10001,555-444-5555,Retail,www.sunriseretail.com
+4,Apex Financial Services,101 Wall Street,cityNew York,NY,10005,555-555-6666,Finance,www.apexfinancial.com
+5,Green Energy Corp.,222 Renewable Rd,citySan Francisco,CA,94105,555-777-8888,Energy,www.greenenergy.com
+6,HealthFirst Medical Group,333 Medical Pkwy,cityHouston,TX,77002,555-999-0000,Healthcare,www.healthfirst.com
+7,Dynamic Marketing Solutions,444 Marketing Ln,cityAtlanta,GA,30303,555-111-2222,Marketing,www.dynamicmarketing.com
+8,Bright Future Education,555 Education Ave,cityBoston,MA,02115,555-333-4444,Education,www.brightfuture.edu
+9,Creative Design Studio,666 Artsy St,cityPortland,OR,97205,555-666-7777,Design,www.creativedesign.com
+10,Supreme Logistics,777 Delivery Dr,cityMiami,FL,33101,555-888-9999,Logistics,www.supremelogistics.com

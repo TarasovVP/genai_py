@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Development of a new AI platform,2023-01-15,2023-12-31,1,Completed,500000.0
+2,Operation Blue Sky,Implementation of a cloud-based solution,2022-11-01,2023-05-15,2,Completed,350000.5
+3,Project Nightingale,Revamping the customer service portal,2023-03-01,2024-02-29,3,In Progress,750000.0
+4,Project Black Hawk,Developing a mobile application for internal use,2022-09-01,2023-03-31,4,Completed,200000.0
+5,Project Silver Lining,Enhancing the cybersecurity infrastructure,2023-05-01,2024-04-30,5,In Progress,600000.0
+6,Project Golden Gate,Upgrading the network infrastructure,2023-07-01,2024-06-30,6,Planning,400000.0
+7,Project Emerald Isle,Modernizing the data warehouse,2022-06-01,2023-02-28,7,Completed,250000.0
+8,Project Crimson Tide,Creating a new marketing campaign,2023-09-01,2024-08-31,8,Planning,300000.0
+9,Project Ivory Tower,Developing a new training program,2023-04-01,2023-12-31,9,In Progress,150000.0
+10,Project Iron Curtain,Implementing a new security protocol,2022-12-01,2023-08-31,10,Completed,450000.0

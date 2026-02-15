@@ -1,0 +1,11 @@
+department_id,company_id,name,location,manager_id
+1,1,Marketing,New York city,101
+2,2,Sales,Los Angeles city,102
+3,3,Engineering,San Francisco city,103
+4,4,Human Resources,Chicago city,104
+5,5,Finance,Houston city,105
+6,6,Research and Development,Philadelphia city,106
+7,7,Customer Service,Phoenix city,107
+8,8,Legal,San Antonio city,108
+9,9,IT,San Diego city,109
+10,10,Operations,Dallas city,110

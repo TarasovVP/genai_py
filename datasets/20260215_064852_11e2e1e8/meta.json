@@ -1,0 +1,14 @@
+{
+  "dataset_id": "20260215_064852_11e2e1e8",
+  "created_at_utc": "2026-02-15T06:48:52Z",
+  "tables": [
+    "companies",
+    "projects",
+    "departments",
+    "employees",
+    "performance_reviews",
+    "employee_benefits",
+    "employee_projects"
+  ],
+  "dataset_prompt": "in \"Companies\" table add word \"city\" before values in \"city\" columns"
+}

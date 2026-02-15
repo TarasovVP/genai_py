@@ -1,0 +1,949 @@
+{
+  "dialect": "postgresql",
+  "tables": {
+    "companies": {
+      "columns": {
+        "company_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "name": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "address": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "city": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "state": {
+          "type_raw": "VARCHAR(50)",
+          "type": "VARCHAR(50)",
+          "type_pg": "VARCHAR(50)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "zip_code": {
+          "type_raw": "VARCHAR(10)",
+          "type": "VARCHAR(10)",
+          "type_pg": "VARCHAR(10)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "phone_number": {
+          "type_raw": "VARCHAR(20)",
+          "type": "VARCHAR(20)",
+          "type_pg": "VARCHAR(20)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "industry": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "website": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        }
+      },
+      "primary_key": [
+        "company_id"
+      ],
+      "foreign_keys": [],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 9,
+      "allowed_values": {}
+    },
+    "departments": {
+      "columns": {
+        "department_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "company_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "location": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "manager_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        }
+      },
+      "primary_key": [
+        "department_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "company_id"
+          ],
+          "ref_table": "companies",
+          "ref_columns": [
+            "company_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 6,
+      "allowed_values": {}
+    },
+    "employees": {
+      "columns": {
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "first_name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "last_name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "middle_name": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "email": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": true,
+          "auto_increment": false,
+          "checks": []
+        },
+        "phone_number": {
+          "type_raw": "VARCHAR(20)",
+          "type": "VARCHAR(20)",
+          "type_pg": "VARCHAR(20)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "hire_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "job_title": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "department_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "salary": {
+          "type_raw": "DECIMAL(10, 2)",
+          "type": "NUMERIC(10, 2)",
+          "type_pg": "NUMERIC(10, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "employment_status": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": [
+            {
+              "expression": "employment_status IN ('Full-time', 'Part-time', 'Contract', 'Temporary')",
+              "in_list": {
+                "column": "employment_status",
+                "allowed": [
+                  "Full-time",
+                  "Part-time",
+                  "Contract",
+                  "Temporary"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "primary_key": [
+        "employee_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "department_id"
+          ],
+          "ref_table": "departments",
+          "ref_columns": [
+            "department_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [
+        [
+          "email"
+        ]
+      ],
+      "checks": [],
+      "raw_items_count": 12,
+      "allowed_values": {
+        "employment_status": [
+          "Full-time",
+          "Part-time",
+          "Contract",
+          "Temporary"
+        ]
+      }
+    },
+    "projects": {
+      "columns": {
+        "project_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "name": {
+          "type_raw": "VARCHAR(255)",
+          "type": "VARCHAR(255)",
+          "type_pg": "VARCHAR(255)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "description": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "start_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "end_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "company_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "project_status": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": [
+            {
+              "expression": "project_status IN ('Planning', 'In Progress', 'Completed', 'On Hold', 'Cancelled')",
+              "in_list": {
+                "column": "project_status",
+                "allowed": [
+                  "Planning",
+                  "In Progress",
+                  "Completed",
+                  "On Hold",
+                  "Cancelled"
+                ]
+              }
+            }
+          ]
+        },
+        "budget": {
+          "type_raw": "DECIMAL(12, 2)",
+          "type": "NUMERIC(12, 2)",
+          "type_pg": "NUMERIC(12, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        }
+      },
+      "primary_key": [
+        "project_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "company_id"
+          ],
+          "ref_table": "companies",
+          "ref_columns": [
+            "company_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 9,
+      "allowed_values": {
+        "project_status": [
+          "Planning",
+          "In Progress",
+          "Completed",
+          "On Hold",
+          "Cancelled"
+        ]
+      }
+    },
+    "employee_projects": {
+      "columns": {
+        "employee_project_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "project_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "role": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "hours_worked": {
+          "type_raw": "DECIMAL(8, 2)",
+          "type": "NUMERIC(8, 2)",
+          "type_pg": "NUMERIC(8, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "start_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "end_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        }
+      },
+      "primary_key": [
+        "employee_project_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "ref_table": "projects",
+          "ref_columns": [
+            "project_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 9,
+      "allowed_values": {}
+    },
+    "employee_benefits": {
+      "columns": {
+        "benefit_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "benefit_type": {
+          "type_raw": "VARCHAR(100)",
+          "type": "VARCHAR(100)",
+          "type_pg": "VARCHAR(100)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "enrollment_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "coverage_amount": {
+          "type_raw": "DECIMAL(10, 2)",
+          "type": "NUMERIC(10, 2)",
+          "type_pg": "NUMERIC(10, 2)",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        }
+      },
+      "primary_key": [
+        "benefit_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 6,
+      "allowed_values": {}
+    },
+    "performance_reviews": {
+      "columns": {
+        "review_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": true,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "employee_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "reviewer_id": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "review_date": {
+          "type_raw": "DATE",
+          "type": "DATE",
+          "type_pg": "DATE",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "rating": {
+          "type_raw": "INT",
+          "type": "INTEGER",
+          "type_pg": "INTEGER",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": false,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": [
+            {
+              "expression": "rating >= 1 AND rating <= 5"
+            }
+          ]
+        },
+        "comments": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "goals_set": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": null,
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": []
+        },
+        "review_status": {
+          "type_raw": "TEXT",
+          "type": "TEXT",
+          "type_pg": "TEXT",
+          "enum_values": null,
+          "type_notes": null,
+          "nullable": true,
+          "default": "'Draft'",
+          "primary_key": false,
+          "unique": false,
+          "auto_increment": false,
+          "checks": [
+            {
+              "expression": "review_status IN ('Draft', 'Final', 'Approved')",
+              "in_list": {
+                "column": "review_status",
+                "allowed": [
+                  "Draft",
+                  "Final",
+                  "Approved"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "primary_key": [
+        "review_id"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "employee_id"
+          ],
+          "ref_table": "employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        },
+        {
+          "columns": [
+            "reviewer_id"
+          ],
+          "ref_table": "employees",
+          "ref_columns": [
+            "employee_id"
+          ],
+          "on_delete": null,
+          "on_update": null,
+          "name": null
+        }
+      ],
+      "unique": [],
+      "checks": [],
+      "raw_items_count": 10,
+      "allowed_values": {
+        "review_status": [
+          "Draft",
+          "Final",
+          "Approved"
+        ]
+      }
+    }
+  },
+  "errors": []
+}
