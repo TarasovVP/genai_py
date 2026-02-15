@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,"Excellent performance, keep up the good work.",Improve communication skills and lead a project.,Draft
+2,2,3,2023-02-20,3,"Meeting expectations, needs improvement in time management.",Attend time management workshop and complete tasks on schedule.,Draft
+3,3,4,2023-03-25,5,"Outstanding performance, consistently exceeds expectations.",Mentor junior team members and present at a conference.,Draft
+4,4,5,2023-04-30,2,"Needs significant improvement, struggling to meet expectations.",Develop a performance improvement plan and attend relevant training.,Draft
+5,5,6,2023-05-05,4,"Good performance, shows potential for growth.",Take on more challenging assignments and learn new technologies.,Draft
+6,6,7,2023-06-10,3,"Meeting expectations, needs to improve collaboration skills.",Participate in team-building activities and actively contribute to group projects.,Draft
+7,7,8,2023-07-15,5,"Exceptional performance, a valuable asset to the team.",Lead a strategic initiative and present findings to senior management.,Draft
+8,8,9,2023-08-20,2,"Performance is below expectations, requires immediate attention.",Seek mentorship and develop a detailed action plan for improvement.,Draft
+9,9,10,2023-09-25,4,"Strong performance, consistently delivers results.",Expand technical expertise and contribute to knowledge sharing sessions.,Draft
+10,10,1,2023-10-30,3,"Meeting expectations, needs to enhance problem-solving skills.",Participate in problem-solving workshops and apply techniques to real-world scenarios.,Draft
