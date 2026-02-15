@@ -1,0 +1,14 @@
+{
+  "dataset_id": "20260215_060924_caeff283",
+  "created_at_utc": "2026-02-15T06:09:24Z",
+  "tables": [
+    "companies",
+    "projects",
+    "departments",
+    "employees",
+    "performance_reviews",
+    "employee_benefits",
+    "employee_projects"
+  ],
+  "dataset_prompt": ""
+}
