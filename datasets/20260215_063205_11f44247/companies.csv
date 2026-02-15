@@ -1,0 +1,11 @@
+company_id,name,address,city,state,zip_code,phone_number,industry,website
+1,Acme Corp,123 Main St,Springfield,IL,62704,555-123-4567,Manufacturing,www.acme.com
+2,Beta Industries,456 Oak Ave,Springfield,IL,60601,312-555-7890,Technology,www.beta.com
+3,Gamma Solutions,789 Pine Ln,Springfield,NY,10001,212-555-2345,Consulting,www.gamma.com
+4,Delta Systems,101 Elm St,Springfield,CA,90001,213-555-6789,Software,www.delta.com
+5,Epsilon Group,222 Maple Dr,Springfield,TX,77002,713-555-3456,Energy,www.epsilon.com
+6,Zeta Corp,333 Cherry Rd,Springfield,PA,19102,215-555-8901,Finance,www.zeta.com
+7,Eta Industries,444 Walnut Ave,Springfield,AZ,85001,602-555-4567,Real Estate,www.eta.com
+8,Theta Solutions,555 Oak St,Springfield,TX,78205,210-555-9012,Healthcare,www.theta.com
+9,Iota Systems,666 Pine Ave,Springfield,CA,92101,619-555-5678,Biotechnology,www.iota.com
+10,Kappa Group,777 Maple Ln,Springfield,TX,75201,214-555-1234,Retail,www.kappa.com
