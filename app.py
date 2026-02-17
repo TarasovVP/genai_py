@@ -33,6 +33,17 @@ from config import get_settings
 from state import init_session_state
 from tracing.langfuse_tracer import LangfuseTracer
 
+from services.vertex_logged import VertexLogged
+from domain.ddl_normalizer import normalize_ddl_for_postgres
+from domain.allowed_values import (
+    normalize_all_tables_to_allowed_values,
+    normalize_df_to_allowed_values,
+)
+from domain.fk_allowed_values import (
+    compute_fk_allowed_values_for_table,
+    get_table_meta,
+)
+
 settings = get_settings()
 DATASETS_ROOT = settings.datasets_root
 
@@ -72,35 +83,6 @@ def _log_event(name: str, level: str, message: str, metadata: Optional[Dict[str,
         metadata=metadata or {},
     )
 
-def _log_generation(
-    phase: str,
-    prompt: str,
-    response_schema: Optional[Dict[str, Any]],
-    model: str,
-    temperature: Optional[float],
-    max_output_tokens: Optional[int],
-    start_ts: float,
-    end_ts: float,
-    output: Optional[Dict[str, Any]],
-    error: Optional[str],
-    metadata: Optional[Dict[str, Any]] = None,
-):
-    tracer.generation(
-        page=page,
-        dataset_id=st.session_state.current_dataset_id,
-        phase=phase,
-        prompt=prompt,
-        response_schema=response_schema,
-        model=model,
-        temperature=temperature,
-        max_output_tokens=max_output_tokens,
-        start_ts=start_ts,
-        end_ts=end_ts,
-        output=output,
-        error=error,
-        metadata=metadata or {},
-    )
-
 def _log_span(
     name: str,
     start_ts: float,
@@ -118,150 +100,22 @@ def _log_span(
         status=status,
     )
 
-def _vertex_generate_json_logged(
-    vertex: VertexGenAIClient,
-    phase: str,
-    prompt: str,
-    response_schema: Dict[str, Any],
-    temperature: float,
-    max_output_tokens: int,
-    repair_attempts: int,
-    token_expand_attempts: int,
-    max_output_tokens_cap: int,
-    metadata: Optional[Dict[str, Any]] = None,
-):
-    t0 = time.time()
-    err = None
-    out = None
-    try:
-        out = vertex.generate_json(
-            prompt=prompt,
-            response_schema=response_schema,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            repair_attempts=repair_attempts,
-            token_expand_attempts=token_expand_attempts,
-            max_output_tokens_cap=max_output_tokens_cap,
-        )
-        return out
-    except Exception as e:
-        err = str(e)
-        raise
-    finally:
-        t1 = time.time()
-        _log_generation(
-            phase=phase,
-            prompt=prompt,
-            response_schema=response_schema,
-            model=getattr(vertex, "model", None) or DEFAULT_VERTEX_MODEL,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            start_ts=t0,
-            end_ts=t1,
-            output=out if isinstance(out, dict) else {"output": out},
-            error=err,
-            metadata=metadata or {},
-        )
-
-_ENUM_COL_RE = re.compile(
-    r"""
-    (?P<col>"?[A-Za-z_][A-Za-z0-9_]*"?)
-    \s+
-    ENUM
-    \s*\(
-        (?P<vals>[^)]*)
-    \)
-    (?P<rest>[^,\n]*)
-    """,
-    re.IGNORECASE | re.VERBOSE,
+_SQL_BLOCKLIST = re.compile(
+    r"\b(drop|truncate|alter|create|grant|revoke|comment|vacuum|analyze|insert|update|delete|merge)\b",
+    re.IGNORECASE,
 )
 
-def _split_enum_vals(vals_raw: str) -> List[str]:
-    vals: List[str] = []
-    for m in re.finditer(r"'((?:[^'\\]|\\.)*)'\s*(?:,|$)", vals_raw.strip()):
-        v = m.group(1)
-        v = v.replace("\\'", "'")
-        v = v.replace("\\\\", "\\")
-        vals.append(v)
-    return vals
-
-def _escape_sql_literal(s: str) -> str:
-    return s.replace("'", "''")
-
-def normalize_ddl_for_postgres(ddl: str) -> str:
-    s = ddl or ""
-    s = re.sub(r"\bAUTO_INCREMENT\b", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\)\s*ENGINE\s*=\s*\w+\s*;?", ");", s, flags=re.IGNORECASE)
-    s = re.sub(r"\bDEFAULT\s+CHARSET\s*=\s*\w+\b", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\bCHARSET\s*=\s*\w+\b", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\bCOLLATE\s*=\s*[\w_]+\b", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\bUNSIGNED\b", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"\bDATETIME\b", "TIMESTAMP", s, flags=re.IGNORECASE)
-
-    def repl_enum(m: re.Match) -> str:
-        col = m.group("col")
-        vals_raw = m.group("vals") or ""
-        rest = (m.group("rest") or "").strip()
-        vals = _split_enum_vals(vals_raw)
-        if not vals:
-            return f'{col} TEXT {rest}'.rstrip()
-        in_list = ", ".join(f"'{_escape_sql_literal(v)}'" for v in vals)
-        check = f'CHECK ({col} IN ({in_list}))'
-        out = f"{col} TEXT {rest} {check}"
-        out = re.sub(r"\s+", " ", out).strip()
-        return out
-
-    s = _ENUM_COL_RE.sub(repl_enum, s)
-    s = re.sub(r"[ \t]+", " ", s)
-    s = re.sub(r"\s+\n", "\n", s)
-    return s
-
-def _schema_allowed_for_table(table_name: str) -> Dict[str, List[Any]]:
-    schema_tables = (st.session_state.schema or {}).get("tables", {}) or {}
-    meta = schema_tables.get(table_name, {}) or {}
-    allowed = meta.get("allowed_values") or {}
-    if isinstance(allowed, dict):
-        return allowed
-    return {}
-
-def _normalize_df_to_allowed_values(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-
-    allowed_map = _schema_allowed_for_table(table_name)
-    if not allowed_map:
-        return df
-
-    out = df.copy()
-    for col, allowed in allowed_map.items():
-        if not allowed or col not in out.columns:
-            continue
-
-        canon = {str(v).strip().lower(): v for v in allowed if v is not None}
-        default_val = allowed[0] if len(allowed) > 0 else None
-
-        def coerce(x):
-            if x is None or (isinstance(x, float) and pd.isna(x)):
-                return x
-            s = str(x).strip()
-            if s == "":
-                return x
-            key = s.lower()
-            if key in canon:
-                return canon[key]
-            return default_val
-
-        out[col] = out[col].apply(coerce)
-
-    return out
-
-def _normalize_all_tables_to_allowed_values(tables: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
-    if not tables:
-        return tables
-    fixed: Dict[str, pd.DataFrame] = {}
-    for tname, df in tables.items():
-        fixed[tname] = _normalize_df_to_allowed_values(tname, df)
-    return fixed
+def _is_sql_safe_readonly(sql: str) -> Tuple[bool, str]:
+    if not sql or not sql.strip():
+        return False, "Empty SQL"
+    s = sql.strip().strip(";").strip()
+    if not (re.match(r"^(with\b[\s\S]+?\bselect\b|select\b)", s, flags=re.IGNORECASE)):
+        return False, "Only SELECT (or WITH ... SELECT) is allowed"
+    if _SQL_BLOCKLIST.search(s):
+        return False, "Only read-only queries are allowed"
+    if ";" in s:
+        return False, "Multiple statements are not allowed"
+    return True, "OK"
 
 def _pg_full_reload(ddl_text: str, tables: Dict[str, pd.DataFrame]) -> Dict[str, int]:
     t0 = time.time()
@@ -358,47 +212,6 @@ def _format_elapsed(seconds: float) -> str:
         return f"{hh:02d}:{mm:02d}:{ss:02d}"
     return f"{mm:02d}:{ss:02d}"
 
-def _get_schema_tables() -> dict:
-    return (st.session_state.schema or {}).get("tables", {}) or {}
-
-def _get_table_meta(table_name: str) -> dict:
-    return _get_schema_tables().get(table_name, {}) or {}
-
-def _compute_fk_allowed_values_for_table(table_name: str) -> Dict[str, List[Any]]:
-    schema_tables = _get_schema_tables()
-    meta = schema_tables.get(table_name, {}) or {}
-    fks = meta.get("foreign_keys") or []
-    allowed: Dict[str, List[Any]] = {}
-
-    for fk in fks:
-        child_cols = fk.get("columns") or []
-        parent = fk.get("ref_table")
-        ref_cols = fk.get("ref_columns") or []
-
-        if not child_cols or not parent:
-            continue
-
-        child_fk_col = child_cols[0]
-
-        if parent not in st.session_state.tables:
-            continue
-
-        df_parent = st.session_state.tables[parent]
-
-        if ref_cols:
-            parent_ref_col = ref_cols[0]
-        else:
-            parent_pk = (schema_tables.get(parent, {}) or {}).get("primary_key") or []
-            parent_ref_col = parent_pk[0] if parent_pk else None
-
-        if not parent_ref_col or parent_ref_col not in df_parent.columns:
-            continue
-
-        vals = df_parent[parent_ref_col].dropna().tolist()
-        allowed[child_fk_col] = vals
-
-    return allowed
-
 def _new_dataset_id() -> str:
     return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
 
@@ -450,23 +263,6 @@ def _tables_to_zip_bytes(tables: Dict[str, pd.DataFrame]) -> bytes:
             zf.writestr(f"{name}.csv", df.to_csv(index=False))
     bio.seek(0)
     return bio.read()
-
-_SQL_BLOCKLIST = re.compile(
-    r"\b(drop|truncate|alter|create|grant|revoke|comment|vacuum|analyze|insert|update|delete|merge)\b",
-    re.IGNORECASE,
-)
-
-def _is_sql_safe_readonly(sql: str) -> Tuple[bool, str]:
-    if not sql or not sql.strip():
-        return False, "Empty SQL"
-    s = sql.strip().strip(";").strip()
-    if not (re.match(r"^(with\b[\s\S]+?\bselect\b|select\b)", s, flags=re.IGNORECASE)):
-        return False, "Only SELECT (or WITH ... SELECT) is allowed"
-    if _SQL_BLOCKLIST.search(s):
-        return False, "Only read-only queries are allowed"
-    if ";" in s:
-        return False, "Multiple statements are not allowed"
-    return True, "OK"
 
 def _schema_text_for_prompt(schema: dict) -> str:
     if not schema:
@@ -617,7 +413,7 @@ Attempt: {attempt}
 """.strip()
 
 def _execute_sql_with_repairs(
-    vertex: VertexGenAIClient,
+    vertex_logged: VertexLogged,
     question: str,
     schema_text: str,
     initial_out: dict,
@@ -647,8 +443,8 @@ def _execute_sql_with_repairs(
                 error_text=error_text,
                 attempt=attempt + 1,
             )
-            out2 = _vertex_generate_json_logged(
-                vertex=vertex,
+
+            out2 = vertex_logged.generate_json(
                 phase="sql_repair",
                 prompt=prompt,
                 response_schema=resp_schema,
@@ -663,6 +459,7 @@ def _execute_sql_with_repairs(
                     "pg_error": error_text[:5000],
                 },
             )
+
             repairs.append(
                 {
                     "attempt": attempt + 1,
@@ -814,6 +611,12 @@ if page == "Data Generation":
                     location=DEFAULT_VERTEX_LOCATION,
                     model=DEFAULT_VERTEX_MODEL,
                 )
+                vertex_logged = VertexLogged(
+                    vertex=vertex,
+                    tracer=tracer,
+                    page=page,
+                    dataset_id=st.session_state.current_dataset_id,
+                )
 
                 progress = st.progress(0)
                 started_at = time.time()
@@ -884,7 +687,7 @@ if page == "Data Generation":
 
                 progress.progress(100)
 
-                dfs = _normalize_all_tables_to_allowed_values(dfs)
+                dfs = normalize_all_tables_to_allowed_values(st.session_state.schema, dfs)
 
                 st.success("Done. Tables generated.")
                 st.session_state.tables = dfs
@@ -1025,8 +828,14 @@ if page == "Data Generation":
                         location=DEFAULT_VERTEX_LOCATION,
                         model=DEFAULT_VERTEX_MODEL,
                     )
+                    vertex_logged = VertexLogged(
+                        vertex=vertex,
+                        tracer=tracer,
+                        page=page,
+                        dataset_id=st.session_state.current_dataset_id,
+                    )
 
-                    table_meta = _get_table_meta(selected_table)
+                    table_meta = get_table_meta(st.session_state.schema, selected_table)
                     if not table_meta:
                         st.error(f"Table '{selected_table}' not found in schema.")
                         st.stop()
@@ -1035,7 +844,11 @@ if page == "Data Generation":
                     DEFAULT_MAX_OPS = 20
 
                     sample_rows = df.head(min(DEFAULT_SAMPLE_ROWS, len(df))).to_dict(orient="records")
-                    fk_allowed = _compute_fk_allowed_values_for_table(selected_table)
+                    fk_allowed = compute_fk_allowed_values_for_table(
+                        schema=st.session_state.schema,
+                        tables=st.session_state.tables,
+                        table_name=selected_table,
+                    )
 
                     patch_schema = build_table_patch_schema(table_meta)
                     patch_prompt = build_prompt_for_table_patch(
@@ -1052,8 +865,7 @@ if page == "Data Generation":
                         line = sctx.empty()
                         line.info("Requesting patch…")
 
-                        patch = _vertex_generate_json_logged(
-                            vertex=vertex,
+                        patch = vertex_logged.generate_json(
                             phase="table_edit",
                             prompt=patch_prompt,
                             response_schema=patch_schema,
@@ -1078,7 +890,7 @@ if page == "Data Generation":
                             fk_allowed_values=fk_allowed,
                         )
 
-                        new_df = _normalize_df_to_allowed_values(selected_table, new_df)
+                        new_df = normalize_df_to_allowed_values(st.session_state.schema, selected_table, new_df)
 
                         st.session_state.tables[selected_table] = new_df
 
@@ -1161,6 +973,12 @@ else:
             location=DEFAULT_VERTEX_LOCATION,
             model=DEFAULT_VERTEX_MODEL,
         )
+        vertex_logged = VertexLogged(
+            vertex=vertex,
+            tracer=tracer,
+            page=page,
+            dataset_id=st.session_state.current_dataset_id,
+        )
 
         started_at = time.time()
         with st.status("Generating SQL via Gemini…", expanded=True) as sctx:
@@ -1171,8 +989,7 @@ else:
             resp_schema = _sql_gen_schema()
 
             line.info("Requesting structured JSON…")
-            out = _vertex_generate_json_logged(
-                vertex=vertex,
+            out = vertex_logged.generate_json(
                 phase="nl2sql",
                 prompt=prompt,
                 response_schema=resp_schema,
@@ -1194,7 +1011,7 @@ else:
             try:
                 eline.info("Running query…")
                 dfq, final_out, repairs = _execute_sql_with_repairs(
-                    vertex=vertex,
+                    vertex_logged=vertex_logged,
                     question=question.strip(),
                     schema_text=schema_text,
                     initial_out=out,

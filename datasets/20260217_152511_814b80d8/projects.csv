@@ -1,0 +1,11 @@
+project_id,name,description,start_date,end_date,company_id,project_status,budget
+1,Project Phoenix,Developing a new AI-powered marketing platform.,2023-01-15,2024-06-30,1,In Progress,500000.0
+2,Operation Blue Sky,Creating a mobile app for tracking renewable energy usage.,2022-11-01,2023-05-15,2,Completed,250000.0
+3,Project Nightingale,Implementing a telehealth platform for rural communities.,2023-03-01,2024-09-30,3,In Progress,750000.0
+4,Project Ironclad,Developing a cybersecurity solution for financial institutions.,2022-09-15,2023-03-31,4,Completed,300000.0
+5,Project Green Earth,Designing a sustainable packaging solution for consumer goods.,2023-05-01,2024-12-31,5,In Progress,600000.0
+6,Project Silver Lining,Building a platform for connecting volunteers with non-profit organizations.,2022-07-01,2023-01-31,6,Completed,200000.0
+7,Project Starlight,Creating a virtual reality experience for educational purposes.,2023-07-15,2025-03-31,7,In Progress,800000.0
+8,Project Deep Dive,Analyzing market trends to identify new business opportunities.,2022-05-01,2022-11-30,8,Completed,150000.0
+9,Project Quantum Leap,Developing a next-generation data analytics platform.,2023-09-01,2025-06-30,9,In Progress,900000.0
+10,Project Golden Gate,Building a secure payment gateway for e-commerce businesses.,2022-03-01,2022-09-30,10,Completed,225000.0
