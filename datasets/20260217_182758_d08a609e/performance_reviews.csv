@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,Excellent performance this quarter.,Continue improving communication skills.,Draft
+2,2,3,2023-02-20,3,"Good performance, needs improvement in project management.",Attend project management workshop.,Draft
+3,3,4,2023-03-25,5,"Outstanding performance, a valuable asset to the team.",Mentor junior team members.,Draft
+4,4,5,2023-04-30,2,Needs significant improvement in teamwork and collaboration.,Participate in team-building activities.,Draft
+5,5,6,2023-05-05,4,"Consistent performance, good understanding of the role.",Lead a small project independently.,Draft
+6,6,7,2023-06-10,3,"Satisfactory performance, needs to improve time management.",Utilize time management tools and techniques.,Draft
+7,7,8,2023-07-15,5,"Exceptional performance, consistently exceeds expectations.",Present findings at the next company conference.,Draft
+8,8,9,2023-08-20,2,"Unsatisfactory performance, requires immediate improvement.",Develop a performance improvement plan.,Draft
+9,9,10,2023-09-25,4,"Good performance, shows potential for growth.",Take on more challenging assignments.,Draft
+10,10,1,2023-10-30,3,"Meets expectations, needs to be more proactive.",Initiate new projects or improvements.,Draft
