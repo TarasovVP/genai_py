@@ -1,23 +1,12 @@
+from datetime import datetime
 import streamlit as st
 import pandas as pd
 import json
 import random
 import inspect
 import time
-import re
 from pathlib import Path
-from datetime import datetime
-from uuid import uuid4
-from io import BytesIO
-import zipfile
 from typing import Optional, Dict, List, Tuple, Any
-
-try:
-    import matplotlib.pyplot as plt
-    _HAS_MPL = True
-except Exception:
-    plt = inspect.findsource .env
-    _HAS_MPL = False
 
 from ddl_parser import parse_ddl_to_schema
 from vertex_client import VertexGenAIClient
@@ -34,6 +23,17 @@ from state import init_session_state
 from tracing.langfuse_tracer import LangfuseTracer
 
 from services.vertex_logged import VertexLogged
+from services.postgres_logged import PostgresLogged
+
+from storage.datasets import (
+    new_dataset_id,
+    save_dataset_to_disk,
+    save_table_csv,
+    df_to_csv_bytes,
+    tables_to_zip_bytes,
+    dataset_dir,
+)
+
 from domain.ddl_normalizer import normalize_ddl_for_postgres
 from domain.allowed_values import (
     normalize_all_tables_to_allowed_values,
@@ -43,9 +43,18 @@ from domain.fk_allowed_values import (
     compute_fk_allowed_values_for_table,
     get_table_meta,
 )
+from domain.schema_render import schema_text_for_prompt
+from domain.sql_guard import is_sql_safe_readonly
+from domain.nl2sql import (
+    sql_gen_schema,
+    build_nl2sql_prompt,
+    execute_sql_with_repairs,
+)
+from domain.charts import maybe_render_chart
+
 
 settings = get_settings()
-DATASETS_ROOT = settings.datasets_root
+DATASETS_ROOT: Path = settings.datasets_root
 
 st.set_page_config(page_title="Data Assistant", layout="wide")
 
@@ -67,11 +76,10 @@ page = st.sidebar.radio(
     label_visibility="collapsed",
 )
 
+
 def _new_trace_id() -> str:
     return tracer.new_trace_id()
 
-def _safe_preview(obj, limit: int = 2000) -> str:
-    return tracer.safe_preview(obj, limit=limit)
 
 def _log_event(name: str, level: str, message: str, metadata: Optional[Dict[str, Any]] = None):
     tracer.event(
@@ -82,6 +90,7 @@ def _log_event(name: str, level: str, message: str, metadata: Optional[Dict[str,
         message=message,
         metadata=metadata or {},
     )
+
 
 def _log_span(
     name: str,
@@ -100,78 +109,6 @@ def _log_span(
         status=status,
     )
 
-_SQL_BLOCKLIST = re.compile(
-    r"\b(drop|truncate|alter|create|grant|revoke|comment|vacuum|analyze|insert|update|delete|merge)\b",
-    re.IGNORECASE,
-)
-
-def _is_sql_safe_readonly(sql: str) -> Tuple[bool, str]:
-    if not sql or not sql.strip():
-        return False, "Empty SQL"
-    s = sql.strip().strip(";").strip()
-    if not (re.match(r"^(with\b[\s\S]+?\bselect\b|select\b)", s, flags=re.IGNORECASE)):
-        return False, "Only SELECT (or WITH ... SELECT) is allowed"
-    if _SQL_BLOCKLIST.search(s):
-        return False, "Only read-only queries are allowed"
-    if ";" in s:
-        return False, "Multiple statements are not allowed"
-    return True, "OK"
-
-def _pg_full_reload(ddl_text: str, tables: Dict[str, pd.DataFrame]) -> Dict[str, int]:
-    t0 = time.time()
-    status = "ok"
-    err = None
-    try:
-        pg: PostgresClient = st.session_state.pg
-        pg.reset_public_schema()
-        pg.apply_ddl(ddl_text)
-        inserted = pg.insert_tables(tables)
-        return inserted
-    except Exception as e:
-        status = "error"
-        err = str(e)
-        raise
-    finally:
-        _log_span(
-            name="postgres_full_reload",
-            start_ts=t0,
-            end_ts=time.time(),
-            metadata={
-                "tables": list((tables or {}).keys()),
-                "ddl_chars": len(ddl_text or ""),
-                "error": err or "",
-            },
-            status=status,
-        )
-
-def _pg_reload_table(table_name: str, df: pd.DataFrame) -> int:
-    t0 = time.time()
-    status = "ok"
-    err = None
-    try:
-        pg: PostgresClient = st.session_state.pg
-        with pg.connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE;')
-            conn.commit()
-        return pg.insert_df(table_name, df)
-    except Exception as e:
-        status = "error"
-        err = str(e)
-        raise
-    finally:
-        _log_span(
-            name="postgres_reload_table",
-            start_ts=t0,
-            end_ts=time.time(),
-            metadata={
-                "table": table_name,
-                "rows": int(len(df)) if df is not None else 0,
-                "cols": int(len(df.columns)) if df is not None else 0,
-                "error": err or "",
-            },
-            status=status,
-        )
 
 def seed_demo_tables():
     st.session_state.tables = {
@@ -192,8 +129,10 @@ def seed_demo_tables():
         ),
     }
 
+
 if not st.session_state.tables:
     seed_demo_tables()
+
 
 def _supports_on_progress(func) -> bool:
     try:
@@ -201,6 +140,7 @@ def _supports_on_progress(func) -> bool:
         return "on_progress" in sig.parameters
     except Exception:
         return False
+
 
 def _format_elapsed(seconds: float) -> str:
     sec = max(0, int(seconds))
@@ -212,331 +152,6 @@ def _format_elapsed(seconds: float) -> str:
         return f"{hh:02d}:{mm:02d}:{ss:02d}"
     return f"{mm:02d}:{ss:02d}"
 
-def _new_dataset_id() -> str:
-    return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
-
-def _dataset_dir(dataset_id: str) -> Path:
-    d = DATASETS_ROOT / dataset_id
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-def _save_text(path: Path, text: str):
-    path.write_text(text or "", encoding="utf-8")
-
-def _save_json(path: Path, obj: dict):
-    path.write_text(json.dumps(obj or {}, ensure_ascii=False, indent=2), encoding="utf-8")
-
-def _save_table_csv(dataset_id: str, table_name: str, df: pd.DataFrame):
-    d = _dataset_dir(dataset_id)
-    csv_path = d / f"{table_name}.csv"
-    df.to_csv(csv_path, index=False, encoding="utf-8")
-
-def _save_dataset_to_disk(
-    dataset_id: str,
-    ddl_text: str,
-    schema: dict,
-    tables: Dict[str, pd.DataFrame],
-    dataset_prompt: str,
-):
-    d = _dataset_dir(dataset_id)
-    _save_text(d / "ddl.sql", ddl_text or "")
-    _save_json(d / "schema.json", schema or {})
-    _save_json(
-        d / "meta.json",
-        {
-            "dataset_id": dataset_id,
-            "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-            "tables": list((tables or {}).keys()),
-            "dataset_prompt": dataset_prompt or "",
-        },
-    )
-    for tname, tdf in (tables or {}).items():
-        _save_table_csv(dataset_id, tname, tdf)
-
-def _df_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False).encode("utf-8")
-
-def _tables_to_zip_bytes(tables: Dict[str, pd.DataFrame]) -> bytes:
-    bio = BytesIO()
-    with zipfile.ZipFile(bio, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name, df in (tables or {}).items():
-            zf.writestr(f"{name}.csv", df.to_csv(index=False))
-    bio.seek(0)
-    return bio.read()
-
-def _schema_text_for_prompt(schema: dict) -> str:
-    if not schema:
-        return "Schema is empty."
-    tables = (schema.get("tables") or {})
-    lines = []
-    for tname, tmeta in tables.items():
-        cols = (tmeta.get("columns") or {})
-        pk = tmeta.get("primary_key") or []
-        fks = tmeta.get("foreign_keys") or []
-        lines.append(f"TABLE {tname}:")
-        for cname, cinfo in cols.items():
-            ctype = cinfo.get("type_pg") or cinfo.get("type") or cinfo.get("type_raw") or "UNKNOWN"
-            nn = "" if cinfo.get("nullable", True) else " NOT NULL"
-            lines.append(f"  - {cname}: {ctype}{nn}")
-        if pk:
-            lines.append(f"  PK: ({', '.join(pk)})")
-        for fk in fks:
-            ccols = fk.get("columns") or []
-            rt = fk.get("ref_table")
-            rcols = fk.get("ref_columns") or []
-            if ccols and rt:
-                if rcols:
-                    lines.append(f"  FK: ({', '.join(ccols)}) -> {rt}({', '.join(rcols)})")
-                else:
-                    lines.append(f"  FK: ({', '.join(ccols)}) -> {rt}")
-        lines.append("")
-    return "\n".join(lines).strip()
-
-def _sql_gen_schema() -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            "sql": {"type": "string"},
-            "explanation": {"type": "string"},
-            "result_kind": {"type": "string", "enum": ["table", "scalar", "empty"]},
-            "chart": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "enum": ["none", "bar", "line", "hist"]},
-                    "x": {"type": "string"},
-                    "y": {"type": "string"},
-                    "title": {"type": "string"},
-                    "bins": {"type": "integer"},
-                },
-                "required": ["type"],
-                "additionalProperties": False,
-            },
-        },
-        "required": ["sql", "explanation", "result_kind", "chart"],
-        "additionalProperties": False,
-    }
-
-def _build_nl2sql_prompt(question: str, schema_text: str) -> str:
-    return f"""
-You are a data analyst. Convert the user's natural-language question into a single PostgreSQL SELECT query.
-
-Rules:
-- Output MUST be valid PostgreSQL.
-- Only SELECT or WITH ... SELECT is allowed. No INSERT/UPDATE/DELETE/DDL.
-- Do not use functions that require unusual extensions. Prefer standard PostgreSQL functions.
-- Use explicit casts when needed (e.g., ::numeric, ::int).
-- Use double quotes for identifiers ONLY if needed; otherwise prefer unquoted lowercase identifiers.
-- If user asks for "top", use ORDER BY + LIMIT.
-- If multiple tables needed, use correct JOINs based on schema.
-- Prefer simple, readable SQL.
-
-If the user asks for a chart:
-- For line/bar: return aggregated results with columns that match chart.x and chart.y.
-- For histogram: prefer returning the raw numeric column (one row per entity) and set chart.type="hist" and chart.y to that column name; include chart.bins if user specifies.
-
-Database schema:
-{schema_text}
-
-User question:
-{question}
-
-Return JSON with:
-- sql: string
-- explanation: short explanation
-- result_kind: "table"|"scalar"|"empty"
-- chart: object with "type": "none"|"bar"|"line"|"hist" and optional x/y/title/bins (only if it makes sense).
-""".strip()
-
-def _run_sql_to_df(sql: str) -> pd.DataFrame:
-    t0 = time.time()
-    status = "ok"
-    err = None
-    try:
-        pg: PostgresClient = st.session_state.pg
-        with pg.connect() as conn:
-            df = pd.read_sql_query(sql, conn)
-        return df
-    except Exception as e:
-        status = "error"
-        err = str(e)
-        raise
-    finally:
-        _log_span(
-            name="postgres_select_query",
-            start_ts=t0,
-            end_ts=time.time(),
-            metadata={
-                "sql": (sql or "")[:5000],
-                "error": err or "",
-            },
-            status=status,
-        )
-
-def _build_sql_repair_prompt(
-    question: str,
-    schema_text: str,
-    bad_sql: str,
-    error_text: str,
-    attempt: int,
-) -> str:
-    return f"""
-You previously generated a PostgreSQL query, but it failed at execution time.
-
-User question:
-{question}
-
-Database schema:
-{schema_text}
-
-Failed SQL:
-{bad_sql}
-
-PostgreSQL error:
-{error_text}
-
-Fix the SQL so it runs successfully and still answers the user's question.
-
-Rules:
-- Output MUST be valid PostgreSQL.
-- Only SELECT or WITH ... SELECT is allowed. No INSERT/UPDATE/DELETE/DDL.
-- Single statement only.
-- Use explicit casts if needed.
-- Prefer standard PostgreSQL functions.
-- Keep it simple and correct.
-
-Return JSON with:
-- sql: string
-- explanation: short explanation of what you changed
-- result_kind: "table"|"scalar"|"empty"
-- chart: object with "type": "none"|"bar"|"line"|"hist" and optional x/y/title/bins
-Attempt: {attempt}
-""".strip()
-
-def _execute_sql_with_repairs(
-    vertex_logged: VertexLogged,
-    question: str,
-    schema_text: str,
-    initial_out: dict,
-    max_repairs: int,
-) -> Tuple[pd.DataFrame, dict, List[dict]]:
-    repairs: List[dict] = []
-    out = dict(initial_out or {})
-    resp_schema = _sql_gen_schema()
-
-    for attempt in range(0, max_repairs + 1):
-        sql = (out.get("sql") or "").strip()
-        ok, why = _is_sql_safe_readonly(sql)
-        if not ok:
-            raise RuntimeError(f"Generated SQL was rejected: {why}")
-
-        try:
-            df = _run_sql_to_df(sql)
-            return df, out, repairs
-        except Exception as e:
-            if attempt >= max_repairs:
-                raise
-            error_text = str(e)
-            prompt = _build_sql_repair_prompt(
-                question=question,
-                schema_text=schema_text,
-                bad_sql=sql,
-                error_text=error_text,
-                attempt=attempt + 1,
-            )
-
-            out2 = vertex_logged.generate_json(
-                phase="sql_repair",
-                prompt=prompt,
-                response_schema=resp_schema,
-                temperature=0.0,
-                max_output_tokens=1024,
-                repair_attempts=1,
-                token_expand_attempts=1,
-                max_output_tokens_cap=2048,
-                metadata={
-                    "attempt": attempt + 1,
-                    "prev_sql": sql[:5000],
-                    "pg_error": error_text[:5000],
-                },
-            )
-
-            repairs.append(
-                {
-                    "attempt": attempt + 1,
-                    "prev_sql": sql,
-                    "error": error_text,
-                    "new_sql": (out2 or {}).get("sql") or "",
-                }
-            )
-            out = dict(out2 or {})
-
-    raise RuntimeError("Unexpected control flow in _execute_sql_with_repairs")
-
-def _maybe_render_chart(df: pd.DataFrame, chart_spec: dict):
-    if df is None or df.empty:
-        return
-    if not chart_spec or chart_spec.get("type") in (None, "", "none"):
-        return
-
-    ctype = chart_spec.get("type")
-    x = chart_spec.get("x")
-    y = chart_spec.get("y")
-    title = chart_spec.get("title") or ""
-    bins = chart_spec.get("bins")
-
-    if ctype not in ("bar", "line", "hist"):
-        return
-
-    if ctype in ("bar", "line"):
-        if not x or not y:
-            return
-        if x not in df.columns or y not in df.columns:
-            return
-
-        if _HAS_MPL:
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            if ctype == "bar":
-                ax.bar(df[x].astype(str), df[y])
-            else:
-                ax.plot(df[x], df[y])
-            if title:
-                ax.set_title(title)
-            ax.set_xlabel(x)
-            ax.set_ylabel(y)
-            st.pyplot(fig)
-        else:
-            try:
-                series = df.set_index(df[x].astype(str))[y]
-                if ctype == "bar":
-                    st.bar_chart(series)
-                else:
-                    st.line_chart(series)
-            except Exception:
-                st.info("Chart rendering is unavailable (matplotlib is not installed).")
-        return
-
-    if ctype == "hist":
-        if not y or y not in df.columns:
-            return
-        series = pd.to_numeric(df[y], errors="coerce").dropna()
-        if series.empty:
-            return
-
-        if _HAS_MPL:
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            if isinstance(bins, int) and bins > 0:
-                ax.hist(series, bins=bins)
-            else:
-                ax.hist(series)
-            if title:
-                ax.set_title(title)
-            ax.set_xlabel(y)
-            ax.set_ylabel("count")
-            st.pyplot(fig)
-        else:
-            st.info("Histogram rendering is unavailable (matplotlib is not installed).")
 
 if page == "Data Generation":
     st.markdown("###")
@@ -572,9 +187,6 @@ if page == "Data Generation":
     if generate_clicked:
         st.session_state.last_error = None
         st.session_state.trace_id = _new_trace_id()
-
-        progress = None
-        status_ctx = None
 
         if ddl_file is None:
             st.error("Please upload a DDL schema file first.")
@@ -692,10 +304,11 @@ if page == "Data Generation":
                 st.success("Done. Tables generated.")
                 st.session_state.tables = dfs
 
-                dataset_id = _new_dataset_id()
+                dataset_id = new_dataset_id()
                 st.session_state.current_dataset_id = dataset_id
 
-                _save_dataset_to_disk(
+                save_dataset_to_disk(
+                    root=DATASETS_ROOT,
                     dataset_id=dataset_id,
                     ddl_text=ddl_for_pg,
                     schema=st.session_state.schema,
@@ -705,11 +318,18 @@ if page == "Data Generation":
 
                 st.session_state.datasets[dataset_id] = {
                     "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-                    "path": str(_dataset_dir(dataset_id)),
+                    "path": str(dataset_dir(DATASETS_ROOT, dataset_id)),
                     "tables": list(st.session_state.tables.keys()),
                 }
 
                 st.caption(f"Saved dataset: {dataset_id}")
+
+                pg_logged = PostgresLogged(
+                    pg=st.session_state.pg,
+                    tracer=tracer,
+                    page=page,
+                    dataset_id=dataset_id,
+                )
 
                 with st.status("Loading dataset into PostgreSQL…", expanded=True) as pgctx:
                     line = pgctx.empty()
@@ -717,7 +337,7 @@ if page == "Data Generation":
                     try:
                         line.info("Reset schema → apply DDL → insert tables…")
 
-                        inserted = _pg_full_reload(
+                        inserted = pg_logged.full_reload(
                             ddl_text=ddl_for_pg,
                             tables=st.session_state.tables,
                         )
@@ -740,9 +360,6 @@ if page == "Data Generation":
             except Exception as e:
                 st.session_state.last_error = f"{e}"
                 st.error(f"Generation failed: {st.session_state.last_error}")
-
-                if status_ctx is not None:
-                    status_ctx.update(label="Generation stopped due to an error ❌", state="error", expanded=True)
 
                 if st.session_state.schema and st.session_state.schema.get("errors"):
                     with st.expander("DDL parser issues"):
@@ -772,7 +389,7 @@ if page == "Data Generation":
     with export_left:
         st.download_button(
             label="Download CSV (selected table)",
-            data=_df_to_csv_bytes(df),
+            data=df_to_csv_bytes(df),
             file_name=f"{selected_table}.csv",
             mime="text/csv",
             use_container_width=True,
@@ -781,7 +398,7 @@ if page == "Data Generation":
     with export_right:
         st.download_button(
             label="Download ZIP (all tables)",
-            data=_tables_to_zip_bytes(st.session_state.tables),
+            data=tables_to_zip_bytes(st.session_state.tables),
             file_name="dataset_tables.zip",
             mime="application/zip",
             use_container_width=True,
@@ -891,19 +508,24 @@ if page == "Data Generation":
                         )
 
                         new_df = normalize_df_to_allowed_values(st.session_state.schema, selected_table, new_df)
-
                         st.session_state.tables[selected_table] = new_df
 
                         cur_id = st.session_state.current_dataset_id
                         if cur_id:
-                            _save_table_csv(cur_id, selected_table, new_df)
+                            save_table_csv(DATASETS_ROOT, cur_id, selected_table, new_df)
 
                         df = new_df
                         df_placeholder.dataframe(df, use_container_width=True, hide_index=True)
 
                         line.info("Updating table in PostgreSQL…")
+                        pg_logged = PostgresLogged(
+                            pg=st.session_state.pg,
+                            tracer=tracer,
+                            page=page,
+                            dataset_id=cur_id,
+                        )
                         try:
-                            inserted = _pg_reload_table(selected_table, new_df)
+                            inserted = pg_logged.reload_table(selected_table, new_df)
                             line.success(f"PostgreSQL updated ✅ (inserted {inserted} rows)")
                         except Exception as e:
                             line.error(f"PostgreSQL update failed ❌: {e}")
@@ -938,7 +560,7 @@ else:
         st.warning("Schema is not loaded yet. Go to 'Data Generation', upload DDL and generate/load dataset first.")
         st.stop()
 
-    schema_text = _schema_text_for_prompt(st.session_state.schema)
+    schema_text = schema_text_for_prompt(st.session_state.schema)
 
     with st.expander("Schema (for reference)", expanded=False):
         st.code(schema_text)
@@ -980,13 +602,20 @@ else:
             dataset_id=st.session_state.current_dataset_id,
         )
 
+        pg_logged = PostgresLogged(
+            pg=st.session_state.pg,
+            tracer=tracer,
+            page=page,
+            dataset_id=st.session_state.current_dataset_id,
+        )
+
         started_at = time.time()
         with st.status("Generating SQL via Gemini…", expanded=True) as sctx:
             line = sctx.empty()
             line.info("Building prompt…")
 
-            prompt = _build_nl2sql_prompt(question=question.strip(), schema_text=schema_text)
-            resp_schema = _sql_gen_schema()
+            prompt = build_nl2sql_prompt(question=question.strip(), schema_text=schema_text)
+            resp_schema = sql_gen_schema()
 
             line.info("Requesting structured JSON…")
             out = vertex_logged.generate_json(
@@ -1010,8 +639,9 @@ else:
             eline = ectx.empty()
             try:
                 eline.info("Running query…")
-                dfq, final_out, repairs = _execute_sql_with_repairs(
+                dfq, final_out, repairs = execute_sql_with_repairs(
                     vertex_logged=vertex_logged,
+                    pg_logged=pg_logged,
                     question=question.strip(),
                     schema_text=schema_text,
                     initial_out=out,
@@ -1036,7 +666,7 @@ else:
         explanation = (final_out or {}).get("explanation") or ""
         chart_spec = (final_out or {}).get("chart") or {"type": "none"}
 
-        ok, why = _is_sql_safe_readonly(sql)
+        ok, why = is_sql_safe_readonly(sql)
         if not ok:
             st.error(f"Generated SQL was rejected: {why}")
             if show_sql and sql:
@@ -1060,6 +690,6 @@ else:
             st.dataframe(dfq, use_container_width=True, hide_index=True)
 
         try:
-            _maybe_render_chart(dfq, chart_spec)
+            maybe_render_chart(st, dfq, chart_spec)
         except Exception as e:
             st.caption(f"Chart skipped: {e}")
