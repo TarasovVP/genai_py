@@ -1,0 +1,11 @@
+employee_id,first_name,last_name,middle_name,email,phone_number,hire_date,job_title,department_id,salary,employment_status
+1,John,Smith,Michael,john.smith@example.com,555-123-4567,2020-01-15,Software Engineer,1,90000.0,Full-time
+2,Alice,Johnson,Marie,alice.johnson@example.com,555-987-6543,2021-03-20,Data Scientist,2,110000.0,Full-time
+3,Robert,Williams,James,robert.williams@example.com,555-222-3333,2019-11-01,Project Manager,3,120000.0,Full-time
+4,Emily,Brown,Grace,emily.brown@example.com,555-444-5555,2022-05-10,Marketing Specialist,4,75000.0,Full-time
+5,David,Garcia,Lee,david.garcia@example.com,555-666-7777,2020-08-01,Sales Representative,5,80000.0,Full-time
+6,Linda,Rodriguez,Ann,linda.rodriguez@example.com,555-888-9999,2023-01-05,HR Manager,6,95000.0,Full-time
+7,Christopher,Wilson,Paul,christopher.wilson@example.com,555-111-2222,2021-06-15,Financial Analyst,7,85000.0,Full-time
+8,Barbara,Davis,Jean,barbara.davis@example.com,555-333-4444,2019-09-20,Customer Service Rep,8,60000.0,Full-time
+9,Michael,Martinez,Edward,michael.martinez@example.com,555-555-6666,2022-02-28,Operations Manager,9,100000.0,Full-time
+10,Susan,Anderson,Elizabeth,susan.anderson@example.com,555-777-8888,2020-05-01,Legal Counsel,10,130000.0,Full-time
