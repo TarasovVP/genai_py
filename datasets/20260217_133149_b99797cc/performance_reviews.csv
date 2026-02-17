@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,Excellent performance this quarter.,Continue exceeding targets.,Draft
+2,2,3,2023-02-20,3,"Good performance, needs improvement in teamwork.",Improve collaboration skills.,Draft
+3,3,4,2023-03-25,5,"Exceptional work, a valuable asset to the team.",Mentor junior team members.,Draft
+4,4,5,2023-04-30,2,Needs significant improvement in project management.,Complete project management training.,Draft
+5,5,6,2023-05-05,4,"Strong technical skills, consistently delivers high-quality work.",Lead a technical workshop for the team.,Draft
+6,6,7,2023-06-10,3,"Meets expectations, needs to improve communication skills.",Participate in a communication workshop.,Draft
+7,7,8,2023-07-15,5,A proactive and innovative team member.,Explore new technologies for the company.,Draft
+8,8,9,2023-08-20,2,Requires improvement in time management and organization.,Attend a time management seminar.,Draft
+9,9,10,2023-09-25,4,Demonstrates leadership potential and is a great team player.,Take on a leadership role in the next project.,Draft
+10,10,1,2023-10-30,3,"Consistently delivers work on time, needs to improve attention to detail.",Focus on improving accuracy in deliverables.,Draft
