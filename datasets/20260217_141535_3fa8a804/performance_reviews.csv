@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_date,rating,comments,goals_set,review_status
+1,1,2,2023-01-15,4,Excellent performance this quarter.,Increase sales by 15%.,Draft
+2,2,3,2023-02-20,3,"Good performance, needs improvement in teamwork.",Improve collaboration skills.,Draft
+3,3,4,2023-03-25,5,"Outstanding performance, exceeded expectations.",Mentor junior team members.,Draft
+4,4,5,2023-04-30,2,Needs improvement in time management.,Attend time management workshop.,Draft
+5,5,6,2023-05-05,4,"Strong technical skills, good problem solver.",Learn new programming language.,Draft
+6,6,7,2023-06-10,3,"Consistent performance, meets expectations.",Take on more responsibilities.,Draft
+7,7,8,2023-07-15,5,"Exceptional leadership skills, inspires team.",Lead a new project.,Draft
+8,8,9,2023-08-20,2,Needs improvement in communication skills.,Practice active listening.,Draft
+9,9,10,2023-09-25,4,"Good performance, proactive and helpful.",Contribute to knowledge sharing sessions.,Draft
+10,10,1,2023-10-30,3,"Meets expectations, reliable and dependable.",Improve presentation skills.,Draft

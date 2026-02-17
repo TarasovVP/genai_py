@@ -4,7 +4,6 @@ import json
 import random
 import inspect
 import time
-import os
 import re
 from pathlib import Path
 from datetime import datetime
@@ -17,15 +16,8 @@ try:
     import matplotlib.pyplot as plt
     _HAS_MPL = True
 except Exception:
-    plt = None
+    plt = inspect.findsource .env
     _HAS_MPL = False
-
-try:
-    from langfuse import Langfuse
-    _HAS_LANGFUSE = True
-except Exception:
-    Langfuse = None
-    _HAS_LANGFUSE = False
 
 from ddl_parser import parse_ddl_to_schema
 from vertex_client import VertexGenAIClient
@@ -37,74 +29,24 @@ from data_editor import (
 )
 from postgres_client import PostgresClient, PostgresConfig
 
-DEFAULT_ROWS_PER_TABLE = 10
-DEFAULT_SEED = 0
+from config import get_settings
+from state import init_session_state
+from tracing.langfuse_tracer import LangfuseTracer
 
-DEFAULT_VERTEX_PROJECT = "gd-gcp-gridu-genai"
-DEFAULT_VERTEX_LOCATION = "europe-west1"
-DEFAULT_VERTEX_MODEL = "gemini-2.0-flash-001"
-
-DATASETS_ROOT = Path("datasets")
-DATASETS_ROOT.mkdir(parents=True, exist_ok=True)
+settings = get_settings()
+DATASETS_ROOT = settings.datasets_root
 
 st.set_page_config(page_title="Data Assistant", layout="wide")
 
-DEFAULT_PG_HOST = os.getenv("PG_HOST", "localhost")
-DEFAULT_PG_PORT = int(os.getenv("PG_PORT", "55432"))
-DEFAULT_PG_DB = os.getenv("PG_DB", "data_assistant")
-DEFAULT_PG_USER = os.getenv("PG_USER", "data_assistant")
-DEFAULT_PG_PASSWORD = os.getenv("PG_PASSWORD", "data_assistant")
+init_session_state(st, settings)
+tracer = LangfuseTracer(st)
 
-LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
-LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+DEFAULT_ROWS_PER_TABLE = settings.default_rows_per_table
+DEFAULT_SEED = settings.default_seed
 
-if "tables" not in st.session_state:
-    st.session_state.tables = {}
-
-if "ddl_text" not in st.session_state:
-    st.session_state.ddl_text = ""
-
-if "schema" not in st.session_state:
-    st.session_state.schema = None
-
-if "last_error" not in st.session_state:
-    st.session_state.last_error = None
-
-if "dataset_prompt" not in st.session_state:
-    st.session_state.dataset_prompt = ""
-
-if "datasets" not in st.session_state:
-    st.session_state.datasets = {}
-
-if "current_dataset_id" not in st.session_state:
-    st.session_state.current_dataset_id = None
-
-if "pg" not in st.session_state:
-    st.session_state.pg = PostgresClient(
-        PostgresConfig(
-            host=DEFAULT_PG_HOST,
-            port=DEFAULT_PG_PORT,
-            dbname=DEFAULT_PG_DB,
-            user=DEFAULT_PG_USER,
-            password=DEFAULT_PG_PASSWORD,
-        )
-    )
-
-if "langfuse" not in st.session_state:
-    st.session_state.langfuse = None
-    if _HAS_LANGFUSE and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
-        try:
-            st.session_state.langfuse = Langfuse(
-                public_key=LANGFUSE_PUBLIC_KEY,
-                secret_key=LANGFUSE_SECRET_KEY,
-                host=LANGFUSE_HOST,
-            )
-        except Exception:
-            st.session_state.langfuse = None
-
-if "trace_id" not in st.session_state:
-    st.session_state.trace_id = None
+DEFAULT_VERTEX_PROJECT = settings.vertex_project
+DEFAULT_VERTEX_LOCATION = settings.vertex_location
+DEFAULT_VERTEX_MODEL = settings.vertex_model
 
 st.sidebar.title("Data Assistant")
 page = st.sidebar.radio(
@@ -115,54 +57,20 @@ page = st.sidebar.radio(
 )
 
 def _new_trace_id() -> str:
-    return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:10]
-
-def _ensure_trace(name: str, metadata: Optional[Dict[str, Any]] = None):
-    lf = st.session_state.langfuse
-    if lf is None:
-        return None
-
-    if not st.session_state.trace_id:
-        st.session_state.trace_id = _new_trace_id()
-
-    try:
-        return lf.trace(
-            id=st.session_state.trace_id,
-            name=name,
-            user_id="streamlit_user",
-            metadata=metadata or {},
-        )
-    except Exception:
-        return None
+    return tracer.new_trace_id()
 
 def _safe_preview(obj, limit: int = 2000) -> str:
-    try:
-        s = json.dumps(obj, ensure_ascii=False)
-    except Exception:
-        s = str(obj)
-    if len(s) > limit:
-        return s[:limit] + "…"
-    return s
+    return tracer.safe_preview(obj, limit=limit)
 
 def _log_event(name: str, level: str, message: str, metadata: Optional[Dict[str, Any]] = None):
-    lf = st.session_state.langfuse
-    if lf is None:
-        return
-
-    tr = _ensure_trace(name="data_assistant", metadata={"page": page, "dataset_id": st.session_state.current_dataset_id})
-    if tr is None:
-        return
-
-    try:
-        lf.event(
-            trace_id=st.session_state.trace_id,
-            name=name,
-            level=level,
-            message=message,
-            metadata=metadata or {},
-        )
-    except Exception:
-        pass
+    tracer.event(
+        page=page,
+        dataset_id=st.session_state.current_dataset_id,
+        name=name,
+        level=level,
+        message=message,
+        metadata=metadata or {},
+    )
 
 def _log_generation(
     phase: str,
@@ -177,47 +85,21 @@ def _log_generation(
     error: Optional[str],
     metadata: Optional[Dict[str, Any]] = None,
 ):
-    lf = st.session_state.langfuse
-    if lf is None:
-        return
-
-    tr = _ensure_trace(
-        name="data_assistant",
-        metadata={
-            "page": page,
-            "phase": phase,
-            "dataset_id": st.session_state.current_dataset_id,
-        },
+    tracer.generation(
+        page=page,
+        dataset_id=st.session_state.current_dataset_id,
+        phase=phase,
+        prompt=prompt,
+        response_schema=response_schema,
+        model=model,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        output=output,
+        error=error,
+        metadata=metadata or {},
     )
-    if tr is None:
-        return
-
-    meta = dict(metadata or {})
-    meta.update(
-        {
-            "phase": phase,
-            "model": model,
-            "temperature": temperature,
-            "max_output_tokens": max_output_tokens,
-            "response_schema_present": bool(response_schema),
-            "output_preview": _safe_preview(output, 1500) if output is not None else "",
-            "error": error or "",
-        }
-    )
-
-    try:
-        lf.generation(
-            trace_id=st.session_state.trace_id,
-            name=phase,
-            model=model,
-            input=prompt,
-            output=_safe_preview(output, 3000) if output is not None else "",
-            metadata=meta,
-            start_time=datetime.utcfromtimestamp(start_ts).isoformat(timespec="seconds") + "Z",
-            end_time=datetime.utcfromtimestamp(end_ts).isoformat(timespec="seconds") + "Z",
-        )
-    except Exception:
-        pass
 
 def _log_span(
     name: str,
@@ -226,33 +108,15 @@ def _log_span(
     metadata: Optional[Dict[str, Any]] = None,
     status: str = "ok",
 ):
-    lf = st.session_state.langfuse
-    if lf is None:
-        return
-
-    tr = _ensure_trace(
-        name="data_assistant",
-        metadata={
-            "page": page,
-            "dataset_id": st.session_state.current_dataset_id,
-        },
+    tracer.span(
+        page=page,
+        dataset_id=st.session_state.current_dataset_id,
+        name=name,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        metadata=metadata or {},
+        status=status,
     )
-    if tr is None:
-        return
-
-    meta = dict(metadata or {})
-    meta["status"] = status
-
-    try:
-        lf.span(
-            trace_id=st.session_state.trace_id,
-            name=name,
-            start_time=datetime.utcfromtimestamp(start_ts).isoformat(timespec="seconds") + "Z",
-            end_time=datetime.utcfromtimestamp(end_ts).isoformat(timespec="seconds") + "Z",
-            metadata=meta,
-        )
-    except Exception:
-        pass
 
 def _vertex_generate_json_logged(
     vertex: VertexGenAIClient,
