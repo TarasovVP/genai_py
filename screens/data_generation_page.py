@@ -150,9 +150,9 @@ def render(
 
     col_left, col_right = st.columns(2, vertical_alignment="center")
     with col_left:
-        temperature = st.slider("Temperature", min_value=0.0, max_value=2.0, value=1.0, step=0.1)
+        temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.7, step=0.1)
     with col_right:
-        max_tokens = st.number_input("Max Tokens", min_value=1, value=100, step=10)
+        max_tokens = st.number_input("Max Tokens", min_value=1, value=10000, step=10)
 
     st.markdown("###")
     generate_clicked = st.button("Generate", type="primary")
@@ -222,7 +222,8 @@ def render(
                         progress.progress(pct)
 
                         elapsed = _format_elapsed(time.time() - started_at)
-                        status_line.info(f"Generating: {shown_done}/{shown_total} — {table_label} | ⏱ {elapsed}")
+                        short_label = str(table_label).split("(", 1)[0].strip()
+                        status_line.info(f"Generating: {shown_done}/{shown_total} — {short_label}")
 
                     t_span0 = time.time()
                     span_status = "ok"

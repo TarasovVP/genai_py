@@ -1,2 +1,6 @@
 .env
-datasets
+# generated datasets
+datasets/
+genai_py/datasets/
+**/datasets/
+*.zip

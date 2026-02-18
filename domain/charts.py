@@ -25,6 +25,9 @@ def maybe_render_chart(st, df: pd.DataFrame, chart_spec: dict) -> None:
     if ctype not in ("bar", "line", "hist"):
         return
 
+    FIG_W, FIG_H = 6.8, 3.2
+    DPI = 120
+
     if ctype in ("bar", "line"):
         if not x or not y:
             return
@@ -32,24 +35,29 @@ def maybe_render_chart(st, df: pd.DataFrame, chart_spec: dict) -> None:
             return
 
         if _HAS_MPL:
-            fig = plt.figure()
+            fig = plt.figure(figsize=(FIG_W, FIG_H), dpi=DPI)
             ax = fig.add_subplot(111)
+
             if ctype == "bar":
                 ax.bar(df[x].astype(str), df[y])
+                ax.tick_params(axis="x", labelrotation=30)
             else:
                 ax.plot(df[x], df[y])
+
             if title:
                 ax.set_title(title)
             ax.set_xlabel(x)
             ax.set_ylabel(y)
-            st.pyplot(fig)
+
+            fig.tight_layout()
+            st.pyplot(fig, use_container_width=True)
         else:
             try:
                 series = df.set_index(df[x].astype(str))[y]
                 if ctype == "bar":
-                    st.bar_chart(series)
+                    st.bar_chart(series, use_container_width=True)
                 else:
-                    st.line_chart(series)
+                    st.line_chart(series, use_container_width=True)
             except Exception:
                 st.info("Chart rendering is unavailable (matplotlib is not installed).")
         return
@@ -62,16 +70,20 @@ def maybe_render_chart(st, df: pd.DataFrame, chart_spec: dict) -> None:
             return
 
         if _HAS_MPL:
-            fig = plt.figure()
+            fig = plt.figure(figsize=(FIG_W, FIG_H), dpi=DPI)
             ax = fig.add_subplot(111)
+
             if isinstance(bins, int) and bins > 0:
                 ax.hist(series, bins=bins)
             else:
                 ax.hist(series)
+
             if title:
                 ax.set_title(title)
             ax.set_xlabel(y)
             ax.set_ylabel("count")
-            st.pyplot(fig)
+
+            fig.tight_layout()
+            st.pyplot(fig, use_container_width=True)
         else:
             st.info("Histogram rendering is unavailable (matplotlib is not installed).")
