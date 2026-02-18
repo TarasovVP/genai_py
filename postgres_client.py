@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Iterable, Any, List
-import re
+from typing import Dict, List
 import pandas as pd
 import psycopg
 
@@ -32,23 +31,32 @@ class PostgresClient:
     def apply_ddl(self, ddl_text: str) -> None:
         statements = self._split_sql_statements(ddl_text)
         with self.connect() as conn:
-            with conn.cursor() as cur:
-                for stmt in statements:
-                    s = stmt.strip()
-                    if not s:
-                        continue
-                    cur.execute(s)
-            conn.commit()
+            with conn:
+                with conn.cursor() as cur:
+                    for stmt in statements:
+                        s = stmt.strip()
+                        if not s:
+                            continue
+                        cur.execute(s)
 
     def reset_public_schema(self) -> None:
         with self.connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
-                cur.execute("CREATE SCHEMA public;")
-                cur.execute("GRANT ALL ON SCHEMA public TO public;")
-            conn.commit()
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
+                    cur.execute("CREATE SCHEMA public;")
+                    cur.execute("GRANT ALL ON SCHEMA public TO public;")
 
     def insert_df(self, table: str, df: pd.DataFrame) -> int:
+        if df is None or df.empty:
+            return 0
+
+        with self.connect() as conn:
+            with conn:
+                inserted = self.insert_df_in_conn(conn, table, df)
+            return inserted
+
+    def insert_df_in_conn(self, conn: psycopg.Connection, table: str, df: pd.DataFrame) -> int:
         if df is None or df.empty:
             return 0
 
@@ -59,16 +67,17 @@ class PostgresClient:
 
         values = df.where(pd.notnull(df), None).itertuples(index=False, name=None)
 
-        with self.connect() as conn:
-            with conn.cursor() as cur:
-                cur.executemany(sql, list(values))
-            conn.commit()
+        with conn.cursor() as cur:
+            cur.executemany(sql, values)
 
         return len(df)
 
     def insert_tables(self, tables: Dict[str, pd.DataFrame]) -> Dict[str, int]:
         result: Dict[str, int] = {}
-        for name, df in (tables or {}).items():
+        if not tables:
+            return result
+
+        for name, df in tables.items():
             result[name] = self.insert_df(name, df)
         return result
 

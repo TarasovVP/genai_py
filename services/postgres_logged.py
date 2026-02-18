@@ -7,7 +7,6 @@ import pandas as pd
 
 
 class PostgresLogged:
-
     def __init__(
         self,
         pg: Any,
@@ -63,10 +62,11 @@ class PostgresLogged:
         err = None
         try:
             with self.pg.connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE;')
-                conn.commit()
-            return self.pg.insert_df(table_name, df)
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY;')
+                    inserted = self.pg.insert_df_in_conn(conn, table_name, df)
+                return inserted
         except Exception as e:
             status = "error"
             err = str(e)
