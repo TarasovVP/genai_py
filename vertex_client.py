@@ -23,7 +23,6 @@ class VertexGenAIClient:
 
     @property
     def model(self) -> str:
-        """Expose the current model name (useful for logging/observability)."""
         return self._model
 
     def generate_json(
@@ -160,14 +159,12 @@ class VertexGenAIClient:
         return str(fr)
 
     def _try_parse_json(self, text: str) -> Optional[Dict[str, Any]]:
-        # 1) direct JSON
         try:
             out = json.loads(text)
             return out if isinstance(out, dict) else None
         except Exception:
             pass
 
-        # 2) try extract json block from text
         extracted = _extract_json_block(text)
         if extracted is None:
             return None
@@ -260,7 +257,6 @@ Invalid output (truncated):
 
 
 def _extract_json_block(s: str) -> Optional[str]:
-    # remove markdown fences if present
     s = re.sub(r"```json\s*", "", s, flags=re.IGNORECASE)
     s = s.replace("```", "")
 

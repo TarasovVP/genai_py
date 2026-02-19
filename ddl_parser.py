@@ -29,12 +29,6 @@ def _strip_quotes(identifier: str) -> str:
 
 
 def _normalize_ident(identifier: str) -> str:
-    """
-    Postgres behavior:
-    - unquoted identifiers are folded to lower-case
-    - quoted identifiers preserve case
-    We emulate this so that generated table/column names match actual DDL execution.
-    """
     raw = (identifier or "").strip()
     stripped = _strip_quotes(raw)
     if _is_quoted_ident(raw):
@@ -291,11 +285,6 @@ def _to_postgres_type(type_raw: str) -> Dict[str, Any]:
 
 
 def _extract_check_expressions(s: str) -> List[str]:
-    """
-    Extract CHECK(...) expressions from a column definition tail.
-    Returns list of raw expressions inside CHECK( ... ).
-    Supports multiple CHECKs in one line.
-    """
     exprs: List[str] = []
     i = 0
     low = s.lower()
@@ -336,11 +325,6 @@ def _extract_check_expressions(s: str) -> List[str]:
 
 
 def _parse_check_in_list(expr: str) -> Optional[Dict[str, Any]]:
-    """
-    Parse very common pattern:
-      <col> IN ('a','b','c')
-    Returns {"column": "<col>", "allowed": [...] } or None
-    """
     if not expr:
         return None
 
