@@ -31,22 +31,6 @@ def render(
     tracer,
     page: str,
 ):
-    def _new_trace_id() -> str:
-        return tracer.new_trace_id()
-
-    def _log_event(name: str, level: str, message: str, metadata: Optional[Dict[str, Any]] = None):
-        try:
-            tracer.event(
-                page=page,
-                dataset_id=st.session_state.current_dataset_id,
-                name=name,
-                level=level,
-                message=message,
-                metadata=metadata or {},
-            )
-        except Exception:
-            pass
-
     st.subheader("Talk to your data")
 
     if not st.session_state.schema:
@@ -57,9 +41,6 @@ def render(
         st.session_state.chat_messages = []
 
     schema_text = schema_text_for_prompt(st.session_state.schema)
-
-    with st.expander("Schema (for reference)", expanded=False):
-        st.code(schema_text)
 
     _render_chat_history(st, st.session_state.chat_messages)
 
@@ -82,20 +63,60 @@ def render(
     with st.chat_message("user"):
         st.markdown(user_text)
 
-    gr = run_guardrails(user_text, st.session_state.schema)
+    dataset_id = st.session_state.current_dataset_id
 
-    _log_event(
-        name="guardrails_check",
-        level="INFO" if gr.allowed else "WARN",
-        message=f"guardrails={gr.kind}",
-        metadata={
-            "allowed": gr.allowed,
-            "kind": gr.kind,
-            "reason": gr.reason,
-            "pii_counts": gr.pii_counts,
-            "meta": gr.meta,
-        },
-    )
+    if hasattr(tracer, "start_request_trace"):
+        tracer.start_request_trace(
+            page=page,
+            dataset_id=dataset_id,
+            metadata={
+                "user_message_chars": len(user_text),
+            },
+            force_new_trace_id=True,
+        )
+    else:
+        try:
+            st.session_state.trace_id = tracer.new_trace_id()
+        except Exception:
+            pass
+
+    t_gr0 = time.time()
+    gr = run_guardrails(user_text, st.session_state.schema)
+    t_gr1 = time.time()
+
+    if hasattr(tracer, "guardrails_span"):
+        try:
+            tracer.guardrails_span(
+                page=page,
+                dataset_id=dataset_id,
+                start_ts=t_gr0,
+                end_ts=t_gr1,
+                allowed=gr.allowed,
+                kind=gr.kind,
+                reason=gr.reason,
+                pii_counts=gr.pii_counts,
+                meta=gr.meta,
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            tracer.event(
+                page=page,
+                dataset_id=dataset_id,
+                name="guardrails_check",
+                level="INFO" if gr.allowed else "WARN",
+                message=f"guardrails={gr.kind}",
+                metadata={
+                    "allowed": gr.allowed,
+                    "kind": gr.kind,
+                    "reason": gr.reason,
+                    "pii_counts": gr.pii_counts,
+                    "meta": gr.meta,
+                },
+            )
+        except Exception:
+            pass
 
     if not gr.allowed:
         with st.chat_message("assistant"):
@@ -118,8 +139,6 @@ def render(
     prompt_question = gr.masked_text
 
     with st.chat_message("assistant"):
-        st.session_state.trace_id = _new_trace_id()
-
         with st.status("Thinking…", expanded=True) as sctx:
             line = sctx.empty()
             line.info("Generating SQL…")
@@ -133,14 +152,14 @@ def render(
                 vertex=vertex,
                 tracer=tracer,
                 page=page,
-                dataset_id=st.session_state.current_dataset_id,
+                dataset_id=dataset_id,
             )
 
             pg_logged = PostgresLogged(
                 pg=st.session_state.pg,
                 tracer=tracer,
                 page=page,
-                dataset_id=st.session_state.current_dataset_id,
+                dataset_id=dataset_id,
             )
 
             prompt = build_nl2sql_prompt(question=prompt_question, schema_text=schema_text)
@@ -155,14 +174,17 @@ def render(
                 repair_attempts=1,
                 token_expand_attempts=1,
                 max_output_tokens_cap=2048,
-                metadata={"question": prompt_question[:2000]},
+                metadata={
+                    "question": prompt_question[:2000],
+                    "pii_counts": gr.pii_counts,
+                },
             )
 
             sctx.update(label="SQL generated ✅", state="running", expanded=True)
 
             line.info("Executing SQL…")
             try:
-                dfq, final_out, repairs = execute_sql_with_repairs(
+                dfq, final_out, _repairs = execute_sql_with_repairs(
                     vertex_logged=vertex_logged,
                     pg_logged=pg_logged,
                     question=prompt_question,
@@ -224,10 +246,49 @@ def render(
             st.info("No rows returned.")
         else:
             st.dataframe(dfq, use_container_width=True, hide_index=True)
+
+            t_ch0 = time.time()
+            ch_status = "ok"
+            ch_err = ""
             try:
                 maybe_render_chart(st, dfq, chart_spec)
             except Exception as e:
+                ch_status = "error"
+                ch_err = str(e)
                 st.caption(f"Chart skipped: {e}")
+            finally:
+                t_ch1 = time.time()
+                if hasattr(tracer, "chart_span"):
+                    try:
+                        tracer.chart_span(
+                            page=page,
+                            dataset_id=dataset_id,
+                            start_ts=t_ch0,
+                            end_ts=t_ch1,
+                            chart_spec=chart_spec or {"type": "none"},
+                            rows=int(len(dfq)) if dfq is not None else 0,
+                            status=ch_status,
+                            error=ch_err,
+                        )
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        tracer.span(
+                            page=page,
+                            dataset_id=dataset_id,
+                            name="chart_render",
+                            start_ts=t_ch0,
+                            end_ts=t_ch1,
+                            status=ch_status,
+                            metadata={
+                                "chart_spec": (chart_spec or {}),
+                                "rows": int(len(dfq)) if dfq is not None else 0,
+                                "error": ch_err,
+                            },
+                        )
+                    except Exception:
+                        pass
 
         st.session_state.chat_messages.append(
             {
