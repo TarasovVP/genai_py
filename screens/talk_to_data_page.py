@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
-
-import streamlit as st
+from typing import Any, Dict, List, Optional
 import time
+
+import pandas as pd
+import streamlit as st
 
 from vertex_client import VertexGenAIClient
 
@@ -19,6 +20,7 @@ from domain.nl2sql import (
 )
 from domain.charts import maybe_render_chart
 
+_MAX_HISTORY_ROWS = 1000
 
 def render(
     st,
@@ -36,146 +38,236 @@ def render(
         st.warning("Schema is not loaded yet. Go to 'Data Generation', upload DDL and generate/load dataset first.")
         st.stop()
 
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+
     schema_text = schema_text_for_prompt(st.session_state.schema)
 
     with st.expander("Schema (for reference)", expanded=False):
         st.code(schema_text)
 
-    st.markdown("###")
-    question = st.text_area(
-        "Question",
-        placeholder="Ask a question in natural language (e.g., 'Show top 10 users by total order amount')...",
-        height=120,
-    )
+    _render_chat_history(st, st.session_state.chat_messages)
 
-    col_run, col_opts = st.columns([1, 3], vertical_alignment="center")
-    with col_opts:
-        show_sql = st.checkbox("Show SQL", value=True)
-        show_expl = st.checkbox("Show explanation", value=True)
-        allow_repairs = st.checkbox("Auto-repair SQL on error", value=True)
-        max_repairs = st.selectbox("Max repairs", options=[0, 1, 2, 3], index=2, disabled=not allow_repairs)
-
-    run = col_run.button("Run query", type="primary")
-
-    st.markdown("### Result")
-
-    if not run:
+    user_text = st.chat_input("Ask a question about your data…")
+    if not user_text:
         return
 
-    if not question.strip():
-        st.warning("Please enter a question first.")
-        st.stop()
+    user_text = user_text.strip()
+    if not user_text:
+        return
 
-    st.session_state.trace_id = _new_trace_id()
-
-    vertex = VertexGenAIClient(
-        project=settings.vertex_project,
-        location=settings.vertex_location,
-        model=settings.vertex_model,
-    )
-    vertex_logged = VertexLogged(
-        vertex=vertex,
-        tracer=tracer,
-        page=page,
-        dataset_id=st.session_state.current_dataset_id,
+    st.session_state.chat_messages.append(
+        {
+            "role": "user",
+            "content": user_text,
+            "ts": time.time(),
+        }
     )
 
-    pg_logged = PostgresLogged(
-        pg=st.session_state.pg,
-        tracer=tracer,
-        page=page,
-        dataset_id=st.session_state.current_dataset_id,
-    )
+    with st.chat_message("user"):
+        st.markdown(user_text)
 
-    started_at = time.time()
-    with st.status("Generating SQL via Gemini…", expanded=True) as sctx:
-        line = sctx.empty()
-        line.info("Building prompt…")
+    with st.chat_message("assistant"):
+        st.session_state.trace_id = _new_trace_id()
 
-        prompt = build_nl2sql_prompt(question=question.strip(), schema_text=schema_text)
-        resp_schema = sql_gen_schema()
+        with st.status("Thinking…", expanded=True) as sctx:
+            line = sctx.empty()
+            line.info("Generating SQL…")
 
-        line.info("Requesting structured JSON…")
-        out = vertex_logged.generate_json(
-            phase="nl2sql",
-            prompt=prompt,
-            response_schema=resp_schema,
-            temperature=0.0,
-            max_output_tokens=1024,
-            repair_attempts=1,
-            token_expand_attempts=1,
-            max_output_tokens_cap=2048,
-            metadata={"question": question.strip()[:2000]},
-        )
-
-        sctx.update(label="SQL generated ✅", state="complete", expanded=False)
-
-    with st.status("Executing SQL in PostgreSQL…", expanded=True) as ectx:
-        eline = ectx.empty()
-        try:
-            eline.info("Running query…")
-            dfq, final_out, repairs = execute_sql_with_repairs(
-                vertex_logged=vertex_logged,
-                pg_logged=pg_logged,
-                question=question.strip(),
-                schema_text=schema_text,
-                initial_out=out,
-                max_repairs=int(max_repairs) if allow_repairs else 0,
+            vertex = VertexGenAIClient(
+                project=settings.vertex_project,
+                location=settings.vertex_location,
+                model=settings.vertex_model,
             )
-            ectx.update(
-                label=f"Query completed ✅ ({_format_elapsed(time.time() - started_at)})",
-                state="complete",
-                expanded=False,
+            vertex_logged = VertexLogged(
+                vertex=vertex,
+                tracer=tracer,
+                page=page,
+                dataset_id=st.session_state.current_dataset_id,
             )
-        except Exception as e:
-            ectx.update(label="Query failed ❌", state="error", expanded=True)
-            st.error(f"PostgreSQL error: {e}")
-            if show_sql:
+
+            pg_logged = PostgresLogged(
+                pg=st.session_state.pg,
+                tracer=tracer,
+                page=page,
+                dataset_id=st.session_state.current_dataset_id,
+            )
+
+            prompt = build_nl2sql_prompt(question=user_text, schema_text=schema_text)
+            resp_schema = sql_gen_schema()
+
+            out = vertex_logged.generate_json(
+                phase="nl2sql",
+                prompt=prompt,
+                response_schema=resp_schema,
+                temperature=0.0,
+                max_output_tokens=1024,
+                repair_attempts=1,
+                token_expand_attempts=1,
+                max_output_tokens_cap=2048,
+                metadata={"question": user_text[:2000]},
+            )
+
+            sctx.update(label="SQL generated ✅", state="running", expanded=True)
+
+            line.info("Executing SQL…")
+            try:
+                dfq, final_out, repairs = execute_sql_with_repairs(
+                    vertex_logged=vertex_logged,
+                    pg_logged=pg_logged,
+                    question=user_text,
+                    schema_text=schema_text,
+                    initial_out=out,
+                    max_repairs=0,
+                )
+            except Exception as e:
+                sctx.update(label="Query failed ❌", state="error", expanded=True)
+                st.error(f"PostgreSQL error: {e}")
+
                 sql_bad = ((out or {}).get("sql") or "").strip()
                 if sql_bad:
                     st.subheader("SQL")
                     st.code(sql_bad, language="sql")
-            st.stop()
 
-    sql = (final_out or {}).get("sql") or ""
-    explanation = (final_out or {}).get("explanation") or ""
-    chart_spec = (final_out or {}).get("chart") or {"type": "none"}
+                st.session_state.chat_messages.append(
+                    {
+                        "role": "assistant",
+                        "kind": "error",
+                        "content": str(e),
+                        "sql": sql_bad,
+                        "ts": time.time(),
+                    }
+                )
+                return
 
-    ok, why = is_sql_safe_readonly(sql)
-    if not ok:
-        st.error(f"Generated SQL was rejected: {why}")
-        if show_sql and sql:
-            st.code(sql, language="sql")
-        st.stop()
+            sctx.update(label="Query completed ✅", state="complete", expanded=False)
 
-    if show_sql:
+        sql = (final_out or {}).get("sql") or ""
+        explanation = (final_out or {}).get("explanation") or ""
+        chart_spec = (final_out or {}).get("chart") or {"type": "none"}
+
+        ok, why = is_sql_safe_readonly(sql)
+        if not ok:
+            st.error(f"Generated SQL was rejected: {why}")
+            if sql:
+                st.subheader("SQL")
+                st.code(sql.strip(), language="sql")
+
+            st.session_state.chat_messages.append(
+                {
+                    "role": "assistant",
+                    "kind": "rejected",
+                    "content": why,
+                    "sql": sql,
+                    "ts": time.time(),
+                }
+            )
+            return
+
         st.subheader("SQL")
         st.code(sql.strip(), language="sql")
 
-    if show_expl and explanation.strip():
-        st.caption(explanation.strip())
+        if explanation.strip():
+            _stream_text(explanation.strip())
 
-    if repairs:
-        with st.expander(f"Repairs applied ({len(repairs)})", expanded=False):
-            st.json(repairs)
+        if dfq is None or dfq.empty:
+            st.info("No rows returned.")
+        else:
+            st.dataframe(dfq, use_container_width=True, hide_index=True)
+            try:
+                maybe_render_chart(st, dfq, chart_spec)
+            except Exception as e:
+                st.caption(f"Chart skipped: {e}")
 
-    if dfq is None or dfq.empty:
-        st.info("No rows returned.")
-    else:
-        st.dataframe(dfq, use_container_width=True, hide_index=True)
+        st.session_state.chat_messages.append(
+            {
+                "role": "assistant",
+                "kind": "result",
+                "ts": time.time(),
+                "sql": sql,
+                "explanation": explanation,
+                "chart_spec": chart_spec,
+                "df": _serialize_df(dfq, max_rows=_MAX_HISTORY_ROWS),
+            }
+        )
 
+
+def _render_chat_history(st, messages: List[Dict[str, Any]]) -> None:
+    for m in messages:
+        role = m.get("role", "assistant")
+        if role == "user":
+            with st.chat_message("user"):
+                st.markdown(m.get("content", ""))
+            continue
+
+        kind = m.get("kind", "result")
+        with st.chat_message("assistant"):
+            if kind in ("error", "rejected"):
+                st.error(m.get("content", ""))
+                sql = (m.get("sql") or "").strip()
+                if sql:
+                    st.subheader("SQL")
+                    st.code(sql, language="sql")
+                continue
+
+            sql = (m.get("sql") or "").strip()
+            explanation = (m.get("explanation") or "").strip()
+            chart_spec = m.get("chart_spec") or {"type": "none"}
+            df_obj = m.get("df")
+
+            if sql:
+                st.subheader("SQL")
+                st.code(sql, language="sql")
+
+            if explanation:
+                st.caption(explanation)
+
+            df = _deserialize_df(df_obj)
+            if df is None or df.empty:
+                st.info("No rows returned.")
+            else:
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                try:
+                    maybe_render_chart(st, df, chart_spec)
+                except Exception:
+                    pass
+
+
+def _serialize_df(df: Optional[pd.DataFrame], max_rows: int) -> Optional[Dict[str, Any]]:
+    if df is None:
+        return None
+    if df.empty:
+        return {"columns": list(df.columns), "rows": [], "truncated": False}
+
+    truncated = False
+    out_df = df
+    if len(df) > max_rows:
+        out_df = df.head(max_rows).copy()
+        truncated = True
+
+    return {
+        "columns": list(out_df.columns),
+        "rows": out_df.to_dict(orient="records"),
+        "truncated": truncated,
+        "total_rows": int(len(df)),
+    }
+
+
+def _deserialize_df(obj: Optional[Dict[str, Any]]) -> Optional[pd.DataFrame]:
+    if not obj:
+        return None
+    cols = obj.get("columns") or []
+    rows = obj.get("rows") or []
     try:
-        maybe_render_chart(st, dfq, chart_spec)
-    except Exception as e:
-        st.caption(f"Chart skipped: {e}")
+        return pd.DataFrame(rows, columns=cols)
+    except Exception:
+        return None
 
 
-def _format_elapsed(seconds: float) -> str:
-    sec = max(0, int(seconds))
-    mm = sec // 60
-    ss = sec % 60
-    hh = mm // 60
-    mm = mm % 60
-    if hh > 0:
-        return f"{hh:02d}:{mm:02d}:{ss:02d}"
-    return f"{mm:02d}:{ss:02d}"
+def _stream_text(text: str, chunk: int = 6, delay_s: float = 0.01) -> None:
+    placeholder = st.empty()
+    acc = ""
+    for i in range(0, len(text), chunk):
+        acc += text[i : i + chunk]
+        placeholder.markdown(acc)
+        time.sleep(delay_s)

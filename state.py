@@ -30,6 +30,12 @@ def init_session_state(st: Any, settings: Any) -> None:
     if "trace_id" not in st.session_state:
         st.session_state.trace_id = None
 
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+
+    if "chat_max_history" not in st.session_state:
+        st.session_state.chat_max_history = 50
+
     if "pg" not in st.session_state:
         st.session_state.pg = PostgresClient(
             PostgresConfig(
