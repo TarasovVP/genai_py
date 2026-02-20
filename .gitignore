@@ -1,5 +1,4 @@
 .env
-# generated datasets
 datasets/
 genai_py/datasets/
 **/datasets/
