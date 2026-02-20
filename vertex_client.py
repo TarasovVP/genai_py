@@ -41,7 +41,6 @@ class VertexGenAIClient:
         last_raw = ""
         last_finish = ""
 
-        # First pass: try normal generation (with token expansion if looks truncated)
         for _ in range(max(0, int(token_expand_attempts)) + 1):
             resp = self._call_vertex(
                 prompt=prompt,
@@ -72,7 +71,6 @@ class VertexGenAIClient:
 
         bad_text = last_raw
 
-        # Second pass: ask model to "repair" invalid JSON output
         for _ in range(max(0, int(repair_attempts))):
             repair_prompt = self._build_repair_prompt(bad_text)
 
@@ -102,7 +100,6 @@ class VertexGenAIClient:
                 bad_text = raw2
                 break
 
-        # If still not valid JSON
         raise RuntimeError(self._format_user_friendly_error(max_output_tokens))
 
     def _call_vertex(
