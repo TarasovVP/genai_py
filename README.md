@@ -37,8 +37,7 @@ An intelligent data assistant built with Streamlit and Google Vertex AI. The app
 - `streamlit` - web interface
 - `pandas` - data manipulation
 - `google-genai` - Vertex AI client
-- `psycopg2-binary` - PostgreSQL driver
-- `python-dotenv` - environment variable management
+- `psycopg[binary]` - PostgreSQL driver
 
 ## Project Structure
 
@@ -165,7 +164,7 @@ The application will be available at `http://localhost:8501`
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.11+
 - Docker and Docker Compose
 - Google Cloud account with Vertex AI access
 - PostgreSQL (via Docker)
