@@ -31,7 +31,12 @@ def get_settings() -> Settings:
     default_rows_per_table = int(os.getenv("DEFAULT_ROWS_PER_TABLE", "10"))
     default_seed = int(os.getenv("DEFAULT_SEED", "0"))
 
-    vertex_project = os.getenv("VERTEX_PROJECT", "your-gcp-project")
+    vertex_project = os.getenv("VERTEX_PROJECT", "").strip()
+    if not vertex_project:
+        raise RuntimeError(
+            "VERTEX_PROJECT is required. Set it to the Google Cloud project "
+            "that has Vertex AI enabled."
+        )
     vertex_location = os.getenv("VERTEX_LOCATION", "europe-west1")
     vertex_model = os.getenv("VERTEX_MODEL", "gemini-2.0-flash-001")
 
